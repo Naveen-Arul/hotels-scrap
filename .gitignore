@@ -3,26 +3,42 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Virtual Environment
+# Virtual Environments
 agrointel/
 venv/
 ENV/
+env/
+.venv/
 
-# Environment files
+# Django stuff
+*.log
+*.pot
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# Environment variables
 .env
 *.env
 
-# VS Code
+# VS Code / IDE settings
 .vscode/
 *.code-workspace
+.idea/
+*.sublime-project
+*.sublime-workspace
 
-# Operating System
+# OS files
 .DS_Store
 Thumbs.db
 
-# Database
-db.sqlite3
-db.sqlite3-journal
-
-# Logs
-*.log
+# Pytest / Coverage
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
