@@ -1,37 +1,16 @@
-# Python
+# Python cache files
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
-env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-*.egg-info/
-.installed.cfg
-*.egg
 
 # Virtual Environment
 agrointel/
 venv/
 ENV/
-.env
 
-# Django
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-media/
+# Environment files
+.env
+*.env
 
 # VS Code
 .vscode/
@@ -41,12 +20,9 @@ media/
 .DS_Store
 Thumbs.db
 
-# Environment Variables
-.env
-*.env
+# Database
+db.sqlite3
+db.sqlite3-journal
 
-# Other
-*.pyc
-*.bak
-*.swp
-*.swo
+# Logs
+*.log
