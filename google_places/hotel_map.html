@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Place Search Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        #map { 
+            height: 90vh; 
+            width: 50%; 
+        }
+        .content-wrapper {
+            display: flex;
+            gap: 10px;
+        }
+        #hotelList {
+            height: 90vh;
+            width: 50%;
+            overflow-y: auto;
+            border-left: 1px solid #ccc;
+            padding-left: 10px;
+        }
+        .hotel-item {
+            margin-bottom: 15px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .hotel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .hotel-item h3 {
+            margin: 0;
+            font-size: 1.2em;
+            color: #333;
+        }
+        .category-tag {
+            background-color: #e9ecef;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            color: #495057;
+            font-weight: 500;
+        }
+        .hotel-details {
+            margin: 10px 0;
+            line-height: 1.6;
+        }
+        .info-row {
+            margin: 8px 0;
+            color: #666;
+        }
+        .info-row strong {
+            color: #333;
+            min-width: 80px;
+            display: inline-block;
+        }
+        .place-id {
+            font-family: monospace;
+            background: #f8f9fa;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-size: 0.9em;
+            color: #666;
+            display: inline-block;
+        }
+        .action-buttons {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+        .view-details-btn {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .view-details-btn:hover {
+            background-color: #0056b3;
+        }
+        .export-btn {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        .export-btn:hover {
+            background-color: #218838;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+        .modal-content {
+            position: relative;
+            background-color: #fff;
+            margin: 5% auto;
+            padding: 30px;
+            width: 85%;
+            max-width: 1000px;
+            border-radius: 12px;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .close-modal {
+            position: absolute;
+            right: 10px;
+            top: 10px;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        .leaflet-popup-content { 
+            font-size: 1rem; 
+        }
+        #searchContainer {
+            margin: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        #searchContainer label {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+            font-weight: 500;
+        }
+        #searchContainer input, #searchContainer select {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            min-width: 120px;
+        }
+        button {
+            padding: 5px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #searchStatus {
+            color: #666;
+            display: none;
+        }
+        .search-center-marker {
+            font-size: 24px;
+            text-align: center;
+            line-height: 30px;
+            text-shadow: 2px 2px 3px rgba(0,0,0,0.3);
+        }
+        #locationInput {
+            width: 300px;
+        }
+        #geocodeStatus {
+            width: 100%;
+            margin-top: 10px;
+            color: #666;
+        }
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .loading-content {
+            text-align: center;
+            padding: 30px;
+            border-radius: 15px;
+            background: white;
+            box-shadow: 0 0 30px rgba(0,0,0,0.15);
+            max-width: 450px;
+            width: 90%;
+        }
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+            text-align: left;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+        }
+        .stat-label {
+            font-size: 0.9em;
+            color: #666;
+        }
+        .stat-value {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #333;
+        }
+        .quick-filters {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 15px;
+        }
+        .quick-filter {
+            background: #e9ecef;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.9em;
+            color: #495057;
+            cursor: pointer;
+            border: 1px solid #dee2e6;
+        }
+        .quick-filter:hover {
+            background: #dee2e6;
+        }
+        .quick-filter.active {
+            background: #007bff;
+            color: white;
+            border-color: #0056b3;
+        }
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #4CAF50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        .loading-progress {
+            margin: 15px 0;
+            background: #f3f3f3;
+            border-radius: 20px;
+            padding: 3px;
+        }
+        .loading-bar {
+            height: 20px;
+            background: #4CAF50;
+            border-radius: 20px;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .loading-status {
+            margin: 10px 0;
+            color: #666;
+            font-size: 14px;
+        }
+        .loading-info {
+            color: #4CAF50;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="loading-overlay">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <h3>Searching Places...</h3>
+            <div class="loading-progress">
+                <div class="loading-bar"></div>
+            </div>
+            <div class="loading-status">Initializing search...</div>
+            <div class="loading-info"></div>
+        </div>
+    </div>
+    <h2>Place Search Map</h2>
+    <div id="searchContainer">
+        <label>Location: <input type="text" id="locationInput" placeholder="Enter city, address, or area name" required></label>
+        <label>Category:
+            <select id="categoryInput" required>
+                <option value="hotels">Hotels</option>
+                <option value="restaurants">Restaurants</option>
+                <option value="mess">Mess</option>
+                <option value="canteens">Canteens</option>
+            </select>
+        </label>
+        <button type="button" id="searchButton" onclick="handleSearch()">Search</button>
+        <span id="searchStatus">Searching...</span>
+        <div id="geocodeStatus"></div>
+    </div>
+    <div class="content-wrapper">
+        <div id="map"></div>
+        <div id="hotelList"></div>
+    </div>
+    <div id="detailsModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <div id="modalContent"></div>
+        </div>
+    </div>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        // Store form values in localStorage to persist them
+        let markers = [];
+        let mapInstance = null;
+        let searchCircle = null;
+        let currentPlaces = [];
+        let originalPlaces = [];  // Store original results globally
+        
+        function resetFilters() {
+            // Reset the dropdowns
+            document.getElementById('sortBy').value = '';
+            document.getElementById('filterBy').value = '';
+            // Restore the original unfiltered results
+            currentPlaces = JSON.parse(JSON.stringify(originalPlaces));
+            showHotelsOnMapAndList(originalPlaces);
+        }
+
+        // Sort places based on selected criteria
+        function sortPlaces() {
+            const sortBy = document.getElementById('sortBy').value;
+            if (!sortBy) {
+                // If no sort selected, show current results
+                showHotelsOnMapAndList(currentPlaces);
+                return;
+            }
+
+            let placesToSort = [...currentPlaces];
+            switch (sortBy) {
+                case 'rating':
+                    placesToSort.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+                    break;
+                case 'reviews':
+                    placesToSort.sort((a, b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0));
+                    break;
+                case 'name':
+                    placesToSort.sort((a, b) => a.name.localeCompare(b.name));
+                    break;
+                case 'status':
+                    placesToSort.sort((a, b) => {
+                        const aOpen = a.opening_hours?.open_now ? 1 : 0;
+                        const bOpen = b.opening_hours?.open_now ? 1 : 0;
+                        return bOpen - aOpen;
+                    });
+                    break;
+            }
+            showHotelsOnMapAndList(placesToSort);
+        }
+
+        // Filter places based on selected criteria
+        function filterPlaces() {
+            const filterBy = document.getElementById('filterBy').value;
+            if (!filterBy) {
+                showHotelsOnMapAndList(currentPlaces);
+                return;
+            }
+
+            let filteredPlaces = currentPlaces.filter(place => {
+                switch (filterBy) {
+                    case 'open':
+                        return place.opening_hours?.open_now;
+                    case 'rating4':
+                        return (place.rating || 0) >= 4;
+                
+                    default:
+                        return true;
+                }
+            });
+            showHotelsOnMapAndList(filteredPlaces);
+            document.getElementById('filterBy').value = filterBy;
+        }
+
+        // Function to get currently visible places (after filtering/sorting)
+        function getVisiblePlaces() {
+            const listDiv = document.getElementById('hotelList');
+            const visibleItems = listDiv.getElementsByClassName('hotel-item');
+            const visiblePlaceIds = Array.from(visibleItems).map(item => {
+                const placeIdElement = item.querySelector('.place-id');
+                return placeIdElement ? placeIdElement.textContent : null;
+            }).filter(id => id);
+            
+            return currentPlaces.filter(place => visiblePlaceIds.includes(place.place_id));
+        }
+
+        function loadSavedFormValues() {
+            const location = localStorage.getItem('location');
+            const category = localStorage.getItem('category');
+
+            if (location) document.getElementById('locationInput').value = location;
+            if (category) document.getElementById('categoryInput').value = category;
+        }
+
+        // Save form values
+        function saveFormValues(location, category) {
+            localStorage.setItem('location', location);
+            localStorage.setItem('category', category);
+        }
+
+        function initMap(lat, lng, zoom = 13, bounds = null) {
+            if (mapInstance) {
+                mapInstance.remove();
+            }
+            mapInstance = L.map('map');
+            
+            // Simple initialization with coordinates and zoom
+            mapInstance.setView([lat, lng], zoom || 13);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap'
+            }).addTo(mapInstance);
+            
+            if (searchCircle) {
+                searchCircle.remove();
+            }
+            // Add a marker for the search center
+            L.marker([lat, lng], {
+                icon: L.divIcon({
+                    className: 'search-center-marker',
+                    html: '📍',
+                    iconSize: [30, 30],
+                    iconAnchor: [15, 30]
+                })
+            }).addTo(mapInstance);
+        }
+
+        function clearMarkers() {
+            markers.forEach(m => mapInstance && mapInstance.removeLayer(m));
+            markers = [];
+        }
+
+        function showPlaceDetails(place) {
+            const modal = document.getElementById('detailsModal');
+            const modalContent = document.getElementById('modalContent');
+            
+            const details = `
+                <h2 style="color: #333; margin-bottom: 20px; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">
+                    ${place.name}
+                    ${place.business_status ? 
+                        `<span style="font-size: 0.7em; padding: 4px 8px; border-radius: 4px; background: ${
+                            place.business_status === 'OPERATIONAL' ? '#e8f5e9' : 
+                            place.business_status === 'CLOSED_TEMPORARILY' ? '#fff3e0' : '#ffebee'
+                        }; color: ${
+                            place.business_status === 'OPERATIONAL' ? '#2e7d32' : 
+                            place.business_status === 'CLOSED_TEMPORARILY' ? '#f57c00' : '#c62828'
+                        }; margin-left: 10px;">${place.business_status.replace(/_/g, ' ')}</span>` 
+                        : ''
+                    }
+                </h2>
+                <div class="hotel-details" style="font-size: 1.1em; line-height: 1.6;">
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 30px;">
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <h3 style="color: #2196F3; margin-bottom: 15px;">Main Information</h3>
+                            <p><strong>Type:</strong> ${place.primary_type}</p>
+                            <p><strong>Status:</strong> 
+                                <span style="color: ${place.opening_hours?.open_now ? '#28a745' : '#dc3545'}; font-weight: bold;">
+                                    ${place.opening_hours?.open_now ? '● Open now' : '● Closed'}
+                                </span>
+                            </p>
+                            ${place.price_level ? 
+                                `<p><strong>Price Level:</strong> ${'💰'.repeat(place.price_level)} 
+                                    <span style="color: #666; font-size: 0.9em;">
+                                        (${['Budget', 'Moderate', 'Expensive', 'Very Expensive'][place.price_level - 1] || ''})
+                                    </span>
+                                </p>` : ''
+                            }
+                            <p><strong>Rating:</strong> ${place.rating ? 
+                                `<span style="background: #fff3cd; padding: 2px 6px; border-radius: 4px;">
+                                    ${place.rating} ⭐ (${place.user_ratings_total || 0} reviews)
+                                </span>` : 'Not rated yet'
+                            }</p>
+                        </div>
+                        
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <h3 style="color: #2196F3; margin-bottom: 15px;">Contact Details</h3>
+                            <p><strong>Address:</strong> ${place.formatted_address || 'Address not available'}</p>
+                            <div>
+                                <strong>Contact:</strong>
+                                ${place.phone_number || 'Not available'}
+                            </div>
+                            ${place.website ? 
+                                `<p><strong>Website:</strong> <a href="${place.website}" target="_blank" style="color: #2196F3; text-decoration: none; word-break: break-all;">${place.website}</a></p>` 
+                                : ''
+                            }
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 30px;">
+                        <h3 style="color: #2196F3; margin-bottom: 15px;">Location & Identification</h3>
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <p><strong>Full Address:</strong> ${place.formatted_address}</p>
+                            <p><strong>Coordinates:</strong> <code style="background: #e3f2fd; padding: 2px 6px; border-radius: 4px;">${place.location.latitude}, ${place.location.longitude}</code></p>
+                            <p><strong>Place ID:</strong> <code style="background: #e3f2fd; padding: 2px 6px; border-radius: 4px;">${place.place_id}</code></p>
+                            <p><strong>Vicinity:</strong> ${place.vicinity || place.formatted_address?.split(',')[0] || 'Not specified'}</p>
+                        </div>
+                    </div>
+
+                    ${place.opening_hours?.weekday_text ? `
+                        <div style="margin-bottom: 30px;">
+                            <h3 style="color: #2196F3; margin-bottom: 15px;">Opening Hours</h3>
+                            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                <ul style="list-style: none; padding-left: 0; margin: 0;">
+                                    ${place.opening_hours.weekday_text.map(text => {
+                                        const [day, hours] = text.split(': ');
+                                        return `<li style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #dee2e6;">
+                                            <strong>${day}:</strong> <span>${hours || 'Closed'}</span>
+                                        </li>`;
+                                    }).join('')}
+                                </ul>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    <div style="margin-bottom: 30px;">
+                        <h3 style="color: #2196F3; margin-bottom: 15px;">Features & Amenities</h3>
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px;">
+                            ${place.delivery ? '<div>✅ Delivery Service</div>' : ''}
+                            ${place.dine_in ? '<div>✅ Dine-in Available</div>' : ''}
+                            ${place.takeout ? '<div>✅ Takeout Available</div>' : ''}
+                            ${place.wheelchair_accessible_entrance ? '<div>♿ Wheelchair Accessible</div>' : ''}
+                            ${place.serves_breakfast ? '<div>🍳 Breakfast Service</div>' : ''}
+                            ${place.serves_lunch ? '<div>🍽️ Lunch Service</div>' : ''}
+                            ${place.serves_dinner ? '<div>🌙 Dinner Service</div>' : ''}
+                            ${place.types?.map(type => 
+                                `<div>🏷️ ${type.replace(/_/g, ' ').toLowerCase()
+                                    .split(' ')
+                                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                                    .join(' ')}
+                                </div>`
+                            ).join('') || ''}
+                        </div>
+                    </div>
+
+                    ${place.reviews?.length ? `
+                        <div>
+                            <h3 style="color: #2196F3; margin-bottom: 15px;">Recent Reviews</h3>
+                            <div style="display: grid; gap: 20px;">
+                                ${place.reviews.slice(0, 3).map(review => `
+                                    <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                                            <strong>${review.author_name || 'Anonymous'}</strong>
+                                            <span>${'⭐'.repeat(review.rating || 0)}</span>
+                                        </div>
+                                        <p style="margin: 0; color: #666;">${review.text || 'No comment'}</p>
+                                        ${review.time ? `
+                                            <small style="color: #999;">
+                                                ${new Date(review.time * 1000).toLocaleDateString()}
+                                            </small>
+                                        ` : ''}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            
+            modalContent.innerHTML = details;
+            modal.style.display = 'block';
+        }
+
+        function exportToCSV(places) {
+            const headers = [
+                'Business Name',
+                'Place ID',
+                'Primary Type',
+                'All Types',
+                'Contact Numbers',
+                'Complete Address',
+                'Business Status',
+                'Current Open/Closed',
+                'Rating',
+                'Total Reviews',
+                'Price Level',
+                'Website',
+                'Latitude',
+                'Longitude',
+                'Monday Hours',
+                'Tuesday Hours',
+                'Wednesday Hours',
+                'Thursday Hours',
+                'Friday Hours',
+                'Saturday Hours',
+                'Sunday Hours',
+                'Delivery Available',
+                'Dine-in Available',
+                'Takeout Available',
+                'Wheelchair Accessible',
+                'Serves Breakfast',
+                'Serves Lunch',
+                'Serves Dinner',
+                'Last Updated'
+            ];
+
+            const rows = places.map(place => {
+                // Get individual day hours
+                const weekdayHours = {};
+                if (place.opening_hours?.weekday_text) {
+                    place.opening_hours.weekday_text.forEach(text => {
+                        const [day, hours] = text.split(': ');
+                        weekdayHours[day] = hours || 'Closed';
+                    });
+                }
+
+                // Format price level with both symbols and text
+                let priceLevel = 'Not specified';
+                if (place.price_level) {
+                    const levels = ['Budget', 'Moderate', 'Expensive', 'Very Expensive'];
+                    priceLevel = `${levels[place.price_level - 1]} (${'💰'.repeat(place.price_level)})`;
+                }
+
+                // Format status with details
+                const businessStatus = place.business_status ? 
+                    place.business_status.replace(/_/g, ' ').toLowerCase()
+                        .split(' ')
+                        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                        .join(' ') 
+                    : 'Operational';
+
+                return [
+                    place.name || '',
+                    place.place_id || '',
+                    Array.isArray(place.types) ? place.types[0].replace(/_/g, ' ').toUpperCase() : '',
+                    Array.isArray(place.types) ? place.types.map(t => t.replace(/_/g, ' ').toUpperCase()).join(' | ') : '',
+                    place.phone_number || '',
+                    place.formatted_address || '',
+                    businessStatus,
+                    place.current_status || (place.opening_hours?.open_now ? 'Open Now' : 'Closed'),
+                    place.rating ? `${place.rating} ⭐` : 'Not rated',
+                    place.user_ratings_total || 0,
+                    priceLevel,
+                    place.website || '',
+                    place.location?.latitude || '',
+                    place.location?.longitude || '',
+                    weekdayHours['Monday'] || 'Hours not available',
+                    weekdayHours['Tuesday'] || 'Hours not available',
+                    weekdayHours['Wednesday'] || 'Hours not available',
+                    weekdayHours['Thursday'] || 'Hours not available',
+                    weekdayHours['Friday'] || 'Hours not available',
+                    weekdayHours['Saturday'] || 'Hours not available',
+                    weekdayHours['Sunday'] || 'Hours not available',
+                    place.delivery ? 'Yes' : 'No',
+                    place.dine_in ? 'Yes' : 'No',
+                    place.takeout ? 'Yes' : 'No',
+                    place.wheelchair_accessible_entrance ? 'Yes' : 'No',
+                    place.serves_breakfast ? 'Yes' : 'No',
+                    place.serves_lunch ? 'Yes' : 'No',
+                    place.serves_dinner ? 'Yes' : 'No',
+                    new Date().toLocaleString()
+                ];
+            });
+
+            const csvContent = [
+                headers.join(','),
+                ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+            ].join('\n');
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', 'places_data.csv');
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function showHotelsOnMapAndList(hotels) {
+            clearMarkers();
+            currentPlaces = hotels;
+            const listDiv = document.getElementById('hotelList');
+            const category = document.getElementById('categoryInput').value;
+            const categoryTitle = category.charAt(0).toUpperCase() + category.slice(1);
+            
+            listDiv.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
+                    <h3>${categoryTitle} Found (${hotels.length})</h3>
+                    <div class="filter-controls" style="display: flex; gap: 10px; align-items: center;">
+                        ${hotels.length > 0 ? `
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <select id="sortBy" onchange="sortPlaces()" style="padding: 5px; border-radius: 4px;">
+                                    <option value="">Sort by...</option>
+                                    <option value="rating">Rating (High to Low)</option>
+                                    <option value="reviews">Most Reviewed</option>
+                                    <option value="name">Name (A-Z)</option>
+                                    <option value="status">Open Now</option>
+                                </select>
+                                <select id="filterBy" onchange="filterPlaces()" style="padding: 5px; border-radius: 4px;">
+                                    <option value="">Filter by...</option>
+                                    <option value="open">Open Now</option>
+                                    <option value="rating4">Rating 4+</option>
+                                </select>
+                                <button onclick="resetFilters()" style="padding: 5px 10px; border-radius: 4px; background-color: #6c757d; color: white; border: none; cursor: pointer;">Reset</button>
+                            </div>
+                            <button class="export-btn" onclick="exportToCSV(currentPlaces)" title="Export all search results">Export to CSV</button>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+            
+            if (hotels.length === 0) {
+                listDiv.innerHTML += '<p>No places found in this area.</p>';
+                return;
+            }
+
+            hotels.forEach((hotel, idx) => {
+                if (hotel.location && hotel.location.latitude && hotel.location.longitude) {
+                    const marker = L.marker([hotel.location.latitude, hotel.location.longitude]).addTo(mapInstance);
+                    marker.bindPopup(
+                        `<b>${hotel.name || 'Unnamed Place'}</b><br>
+                        ${hotel.formatted_address || hotel.vicinity || 'Address not available'}<br>
+                        ${hotel.formatted_phone_number || hotel.international_phone_number ? `Phone: ${hotel.formatted_phone_number || hotel.international_phone_number}<br>` : ''}
+                        ${hotel.rating ? `Rating: ${hotel.rating} ⭐ (${hotel.user_ratings_total || 0} reviews)<br>` : ''}
+                        <div style="margin-top: 5px;">
+                            <strong>Place ID:</strong><br>
+                            <code style="background: #f8f9fa; padding: 2px 4px; border-radius: 3px;">${hotel.place_id}</code>
+                        </div>`
+                    );
+                    markers.push(marker);
+                }
+
+                const hotelDiv = document.createElement('div');
+                hotelDiv.className = 'hotel-item';
+                hotelDiv.innerHTML = `
+                    <div class="hotel-header">
+                        <h3>${idx + 1}. ${hotel.name}</h3>
+                        <span class="category-tag">${hotel.primary_type || 'PLACE'}</span>
+                    </div>
+                    <div class="hotel-details">
+                        <div class="info-row">
+                            <strong>Address:</strong> ${hotel.formatted_address || 'Address not available'}
+                        </div>
+                        <div class="info-row">
+                            <strong>Contact${hotel.phone_numbers?.length > 1 ? 's' : ''}:</strong> 
+                            ${hotel.phone_number || 'Not available'}
+                        </div>
+                        ${hotel.rating ? `
+                        <div class="info-row">
+                            <strong>Rating:</strong> 
+                            <span class="rating">
+                                ${hotel.rating} ⭐ 
+                                ${hotel.reviews_count ? `(${hotel.reviews_count} reviews)` : ''}
+                            </span>
+                        </div>
+                        ` : ''}
+                        ${hotel.opening_hours?.open_now !== undefined ? `
+                        <div class="info-row">
+                            <strong>Status:</strong> 
+                            <span style="color: ${hotel.opening_hours.open_now ? '#28a745' : '#dc3545'}">
+                                ${hotel.opening_hours.open_now ? '● Open now' : '● Closed'}
+                            </span>
+                        </div>
+                        ` : ''}
+                        ${hotel.price_level ? `
+                        <div class="info-row">
+                            <strong>Price:</strong> ${'💰'.repeat(hotel.price_level)}
+                        </div>
+                        ` : ''}
+                        <div class="info-row" style="margin-top: 10px;">
+                            <code class="place-id">${hotel.place_id}</code>
+                        </div>
+                    </div>
+                    <div class="action-buttons">
+                        <button class="view-details-btn" onclick="showPlaceDetails(currentPlaces[${idx}])">View Details</button>
+                    </div>
+                `;
+                listDiv.appendChild(hotelDiv);
+            });
+        }
+
+        async function fetchAndDisplayHotels(params) {
+            const loadingOverlay = document.querySelector('.loading-overlay');
+            const loadingStatus = document.querySelector('.loading-status');
+            const loadingInfo = document.querySelector('.loading-info');
+            const loadingBar = document.querySelector('.loading-bar');
+            const searchButton = document.getElementById('searchButton');
+            const category = document.getElementById('categoryInput').value;
+            
+            // Initialize a progress animation with smooth transition
+            let progress = 0;
+            loadingBar.style.transition = 'width 0.5s ease-in-out';
+            const progressInterval = setInterval(() => {
+                if (progress < 90) {  // Only go up to 90% automatically
+                    // Smaller, more consistent increments
+                    progress += 0.5;
+                    loadingBar.style.width = `${Math.min(progress, 90)}%`;
+                }
+            }, 300);
+            
+            try {
+                // Show initial loading state
+                loadingOverlay.style.display = 'flex';
+                searchButton.disabled = true;
+                loadingBar.style.width = '0%';
+                
+                // Show search parameters
+                loadingInfo.innerHTML = `
+                    <div style="text-align: left; margin-top: 15px;">
+                        <div>🎯 Searching: ${category.toUpperCase()}</div>
+                        <div>📍 Area Center: ${params.latitude.toFixed(6)}, ${params.longitude.toFixed(6)}</div>
+                        <div>🔍 Searching all places in this area...</div>
+                    </div>
+                `;
+                
+                const queryParams = new URLSearchParams({
+                    latitude: params.latitude,
+                    longitude: params.longitude,
+                    ...(params.area_size && { area_size: params.area_size }),
+                    ...(params.grid_size && { grid_size: params.grid_size }),
+                    ...(params.overlap && { overlap: params.overlap })
+                });
+                // Show loading overlay with initial message
+                loadingOverlay.style.display = 'flex';
+                searchButton.disabled = true;
+                
+                // Initialize loading animation with status updates
+                let progress = 0;
+                let searchPhase = 0;
+                const phases = [
+                    'Initializing search...',
+                    'Connecting to Google Places API...',
+                    'Fetching nearby places...',
+                    'Processing results...',
+                    'Preparing map display...'
+                ];
+                
+                // Set smooth transition for the loading bar
+                loadingBar.style.transition = 'width 0.5s ease-in-out';
+                
+                const progressInterval = setInterval(() => {
+                    // Smaller increments for smoother animation
+                    progress += 0.5;
+                    if (progress <= 90) {
+                        loadingBar.style.width = `${progress}%`;
+                        
+                        // Update search phase messages
+                        if (progress % 20 === 0) {
+                            searchPhase = Math.min(searchPhase + 1, phases.length - 1);
+                            loadingStatus.textContent = phases[searchPhase];
+                        }
+                    }
+                }, 300);
+
+                // Show search parameters
+                loadingInfo.innerHTML = `
+                    <div style="text-align: left; margin-top: 15px;">
+                        <div>🎯 Searching: ${category.toUpperCase()}</div>
+                        <div>📍 Area Center: ${params.latitude.toFixed(6)}, ${params.longitude.toFixed(6)}</div>
+                        <div>🔍 Search area: ${(params.area_size/1000).toFixed(1)}km with ${params.grid_size}x${params.grid_size} grid</div>
+                    </div>
+                `;
+
+                // Update initial loading status
+                loadingStatus.textContent = `Searching for all ${category} in this area...`;
+                loadingInfo.textContent = 'Connecting to server...';
+                
+                // Construct search URL with all parameters
+                const searchParams = new URLSearchParams({
+                    latitude: params.latitude,
+                    longitude: params.longitude,
+                    area_size: params.area_size,
+                    grid_size: params.grid_size,
+                    overlap: params.overlap
+                });
+                const url = `http://127.0.0.1:8001/search/?${searchParams.toString()}`;
+                
+                console.log('Making API request to:', url); // Debug log
+                
+                // Start the fetch with timeout for better user feedback
+                const startTime = Date.now();
+                loadingInfo.textContent = 'Fetching results...';
+                
+                const response = await fetch(url, { 
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                const endTime = Date.now();
+                
+                // Calculate search stats
+                const searchTime = ((endTime - startTime) / 1000).toFixed(1);
+                
+                if (data.results) {
+                    const resultsCount = data.results.length;
+                    // Update loading info with search results
+                    loadingInfo.innerHTML = `
+                        <div style="text-align: left; margin-top: 15px;">
+                            <div style="font-size: 1.2em; color: #28a745; margin-bottom: 10px;">
+                                ✅ Found ${resultsCount} ${category.toLowerCase()}!
+                            </div>
+                            <div>⏱️ Search time: ${searchTime} seconds</div>
+                            <div>📍 Area searched completely</div>
+                            ${resultsCount > 0 ? `<div>📊 Processing ${resultsCount} results...</div>` : ''}
+                        </div>
+                    `;
+                    loadingStatus.textContent = 'Preparing your results...';
+                    
+                    // Complete the progress bar with animation
+                    loadingBar.style.transition = 'width 0.5s ease-in-out';
+                    loadingBar.style.width = '100%';
+                    
+                    // Show completion message briefly
+                    await new Promise(resolve => setTimeout(resolve, 800));
+                    showHotelsOnMapAndList(data.results);
+                    // Hide loading overlay after showing results
+                    loadingOverlay.style.display = 'none';
+                    searchButton.disabled = false;
+                    clearInterval(progressInterval);
+                } else {
+                    loadingInfo.innerHTML = `
+                        <div style="text-align: left; margin-top: 15px;">
+                            <div style="color: #dc3545;">❌ No results found</div>
+                            <div>⏱️ Search time: ${searchTime} seconds</div>
+                            <div>💡 Try increasing the radius or changing category</div>
+                        </div>
+                    `;
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    showHotelsOnMapAndList([]);
+                    // Hide loading overlay after showing empty results
+                    loadingOverlay.style.display = 'none';
+                    searchButton.disabled = false;
+                    clearInterval(progressInterval);
+                }
+            } catch (error) {
+                console.error('Error fetching places:', error);
+                loadingInfo.innerHTML = `
+                    <div style="text-align: left; margin-top: 15px;">
+                        <div style="color: #dc3545;">❌ Error occurred</div>
+                        <div>Please ensure the backend server is running at http://127.0.0.1:8001</div>
+                        <div>Error details: ${error.message}</div>
+                    </div>
+                `;
+                loadingStatus.textContent = 'Search failed';
+                loadingBar.style.backgroundColor = '#dc3545';
+                loadingBar.style.width = '100%';  // Show full red bar for error
+                
+                // Clear the progress animation
+                if (progressInterval) {
+                    clearInterval(progressInterval);
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                showHotelsOnMapAndList([]);
+            } finally {
+                if (progressInterval) {
+                    clearInterval(progressInterval);
+                }
+                loadingOverlay.style.display = 'none';
+                searchButton.disabled = false;
+                loadingBar.style.backgroundColor = '#4CAF50';
+            }
+        }
+
+        // Initialize empty map
+        initMap(0, 0, 1);
+
+        // Geocoding function
+        async function geocodeLocation(address) {
+            const geocodeStatus = document.getElementById('geocodeStatus');
+            geocodeStatus.textContent = 'Geocoding address...';
+            
+            try {
+                const response = await fetch(`http://127.0.0.1:8001/geocode/?address=${encodeURIComponent(address)}`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Geocoding request failed');
+                }
+                
+                if (!data.results || data.results.length === 0) {
+                    throw new Error('No location found for this address');
+                }
+                
+                console.log('Geocoding response:', JSON.stringify(data, null, 2)); // Detailed logging
+                console.log('First result:', JSON.stringify(data.results[0], null, 2)); // Log first result
+                
+                const result = data.results[0];
+                if (!result) {
+                    throw new Error('No results found in geocoding response');
+                }
+                
+                // Log the actual structure we're working with
+                console.log('Location data:', result.geometry?.location);
+                
+                // Get location from geometry
+                const location = result.geometry?.location;
+                if (!location || typeof location.lat === 'undefined' || typeof location.lng === 'undefined') {
+                    throw new Error('Location coordinates not found in response');
+                }
+
+                geocodeStatus.textContent = `Found location: ${result.formatted_address}`;
+                return {
+                    lat: location.lat,
+                    lng: location.lng,
+                    formattedAddress: result.formatted_address,
+                    bounds: result.geometry.bounds || null,
+                    areaInfo: result.area_info || null
+                };
+            } catch (error) {
+                console.error('Geocoding error:', error);
+                geocodeStatus.textContent = `Error: ${error.message}`;
+                throw error;
+            }
+        }
+
+        // Handle search function - make it globally accessible
+        window.handleSearch = async function() {
+            console.log('Search button clicked'); // Debug log
+            
+            // Get form values
+            const locationInput = document.getElementById('locationInput').value;
+            const category = document.getElementById('categoryInput').value;
+            
+            if (!locationInput || !category) {
+                alert('Please enter a location and select a category');
+                return;
+            }
+            
+            // Show geocoding status
+            const geocodeStatus = document.getElementById('geocodeStatus');
+            geocodeStatus.textContent = 'Finding location...';
+            
+            try {
+                // First geocode the location
+                const location = await geocodeLocation(locationInput);
+                console.log('Geocoded location:', location); // Debug log
+                
+                // Save form values
+                saveFormValues(locationInput, category);
+                
+                console.log('Starting search with location:', location);
+                
+                // Initialize map with coordinates
+                initMap(location.lat, location.lng, 13); // Use zoom level 13 for city view
+                
+                // Prepare search parameters with location and area info
+                const searchParams = {
+                    latitude: location.lat,
+                    longitude: location.lng,
+                    area_size: location.areaInfo?.area_size || 5000,  // Default 5km if not specified
+                    grid_size: location.areaInfo?.grid_size || 3,     // Default 3x3 grid if not specified
+                    overlap: location.areaInfo?.overlap || 0.5        // Default 50% overlap if not specified
+                };
+                
+                await fetchAndDisplayHotels(searchParams);
+                console.log('Search completed'); // Debug log
+                
+                // Update status
+                geocodeStatus.textContent = `Showing all results in: ${location.formattedAddress}`;
+            } catch (error) {
+                console.error('Search error:', error);
+                const errorMessage = error.stack || error.message || 'Unknown error occurred';
+                console.log('Detailed error:', errorMessage); // More detailed logging
+                alert('Search failed: ' + error.message);
+                geocodeStatus.textContent = 'Error: ' + error.message;
+            }
+        }
+        
+        // Load saved values when page loads
+        window.addEventListener('load', loadSavedFormValues);
+
+        // Modal close button
+        document.querySelector('.close-modal').addEventListener('click', function() {
+            document.getElementById('detailsModal').style.display = 'none';
+        });
+
+        // Close modal when clicking outside
+        window.addEventListener('click', function(event) {
+            const modal = document.getElementById('detailsModal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>

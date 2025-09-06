@@ -1,0 +1,4 @@
+# Add this to your requirements.txt or install via pip:
+# pip install django-cors-headers
+
+django-cors-headers
