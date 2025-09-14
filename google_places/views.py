@@ -129,7 +129,7 @@ class GooglePlacesHotelSearchView(APIView):
             lng = float(lng)
             # Get area size from request or use default
             area_size = request.query_params.get('area_size')
-            area_size = int(area_size) if area_size else 3000  # Smaller radius for more precision
+            area_size = int(area_size) if area_size else 2000  # Very small radius for dense results
         except ValueError:
             return Response(
                 {'error': 'Invalid latitude or longitude.'}, 
@@ -142,8 +142,8 @@ class GooglePlacesHotelSearchView(APIView):
             print(f"Searching for category: {category}")  # Debug log
             
             # Get grid parameters from request or use defaults
-            grid_size = int(request.query_params.get('grid_size', 15))  # Many small searches
-            overlap = float(request.query_params.get('overlap', 0.7))   # High overlap for coverage
+            grid_size = int(request.query_params.get('grid_size', 8))   # Moderate grid size
+            overlap = float(request.query_params.get('overlap', 0.8))   # Very high overlap for dense coverage
             
             earth_radius = 6378137  # meters
             step = area_size * (1 - overlap) * 2 / grid_size
@@ -166,10 +166,15 @@ class GooglePlacesHotelSearchView(APIView):
             step_lat = offset_lat(area_size) * (1 - overlap)
             step_lng = offset_lng(area_size, lat) * (1 - overlap)
             
+            print(f"Search configuration: {grid_size}x{grid_size} grid, {area_size}m radius, {overlap} overlap")
+            print(f"Grid step: lat={step_lat:.6f}°, lng={step_lng:.6f}°")
+            
             # Calculate grid bounds
             half_grid = (grid_size - 1) / 2
             start_lat = lat - half_grid * step_lat
             start_lng = lng - half_grid * step_lng
+            
+            print(f"Grid bounds: lat {start_lat:.6f} to {lat + half_grid * step_lat:.6f}, lng {start_lng:.6f} to {lng + half_grid * step_lng:.6f}")
             
             # Search each grid cell
             for i in range(grid_size):
