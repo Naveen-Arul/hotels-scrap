@@ -12,22 +12,12 @@ from django.core.cache import cache
 class GooglePlacesHotelSearchView(APIView):
     def _make_request_with_retry(self, url: str, headers: Dict, json: Dict = None, method: str = 'get', max_retries: int = 3) -> Dict:
         """Make a request with retry logic"""
-        import ssl
-        import urllib3
-        
-        # Disable SSL warnings for production deployment
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        
         for attempt in range(max_retries):
             try:
-                # Add SSL verification bypass for Render deployment
-                session = requests.Session()
-                session.verify = False  # Bypass SSL verification
-                
                 if method.lower() == 'post':
-                    response = session.post(url, headers=headers, json=json, timeout=30)
+                    response = requests.post(url, headers=headers, json=json, timeout=15)
                 else:
-                    response = session.get(url, headers=headers, timeout=30)
+                    response = requests.get(url, headers=headers, timeout=15)
                 
                 # For 400 errors, return empty dict immediately as these won't succeed with retry
                 if response.status_code == 400:
@@ -39,15 +29,19 @@ class GooglePlacesHotelSearchView(APIView):
                 
                 response.raise_for_status()
                 return response.json()
-            except Exception as e:
-                print(f"Request attempt {attempt + 1} failed: {str(e)}")
+            except requests.RequestException as e:
                 if attempt == max_retries - 1:  # Last attempt failed
-                    print(f"All {max_retries} attempts failed for {url}: {str(e)}")
-                    # Return a mock response to prevent total failure
-                    return {"results": [], "error": "API temporarily unavailable"}
-                time.sleep(2 * (attempt + 1))  # Progressive delay
-                continue
-        return {"results": [], "error": "Request failed"}
+                    error_msg = f"All {max_retries} attempts failed for {url}"
+                    if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                        error_msg += f"\nResponse: {e.response.text}"
+                    print(error_msg)
+                    return {}
+                # Only retry on network errors or 5xx errors
+                if not hasattr(e, 'response') or (500 <= e.response.status_code < 600):
+                    time.sleep(1 * (attempt + 1))  # Progressive delay
+                    continue
+                return {}
+        return {}
 
     def format_place_data(self, place: Dict, details: Dict = None) -> Dict:
         """Format place data with all available details"""
@@ -129,147 +123,139 @@ class GooglePlacesHotelSearchView(APIView):
             lng = float(lng)
             # Get area size from request or use default
             area_size = request.query_params.get('area_size')
-            area_size = int(area_size) if area_size else 4000  # 4km radius for good coverage
+            area_size = int(area_size) if area_size else 5000  # Default to 5km if not provided
         except ValueError:
             return Response(
                 {'error': 'Invalid latitude or longitude.'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        try:
-            # Get category from request parameter
-            category = request.query_params.get('category', 'hotels')  # Default to hotels if not provided
-            print(f"Searching for category: {category}")  # Debug log
-            
-            # Define search parameters - use multiple related keywords for better coverage
-            if category == 'hotels':
-                keywords = ['hotels', 'lodges', 'resorts', 'guest houses', 'accommodation']
-            elif category == 'restaurants':
-                keywords = ['restaurants', 'cafes', 'food', 'dining', 'eateries']
-            elif category == 'mess':
-                keywords = ['mess', 'canteen', 'hostel mess', 'dining hall']
-            elif category == 'canteens':
-                keywords = ['canteens', 'cafeteria', 'food court', 'mess']
-            else:
-                keywords = [category]  # fallback to the category itself
-            
-            print(f"Using keywords: {keywords}")  # Debug log
-            
-            # Get grid parameters from request or use defaults  
-            grid_size = int(request.query_params.get('grid_size', 5))   # 5x5 for better coverage
-            overlap = float(request.query_params.get('overlap', 0.6))   # 60% overlap
-            
-            print(f"Grid configuration: {grid_size}x{grid_size}, area_size: {area_size}m, overlap: {overlap}")
-            
-            earth_radius = 6378137  # meters
+        # Define search parameters
+        keywords = ['hotels', 'restaurants', 'mess', 'canteens']
+        
+        # Get grid parameters from request or use defaults
+        grid_size = int(request.query_params.get('grid_size', 3))
+        overlap = float(request.query_params.get('overlap', 0.5))
+        
+        earth_radius = 6378137  # meters
+        step = area_size * (1 - overlap) * 2 / grid_size
 
-            def offset_lat(d):
-                return (d / earth_radius) * (180 / math.pi)
+        def offset_lat(d):
+            return (d / earth_radius) * (180 / math.pi)
 
-            def offset_lng(d, lat0):
-                return (d / (earth_radius * math.cos(math.pi * lat0 / 180))) * (180 / math.pi)
+        def offset_lng(d, lat0):
+            return (d / (earth_radius * math.cos(math.pi * lat0 / 180))) * (180 / math.pi)
 
-            places = {}
-            url = 'https://places.googleapis.com/v1/places:searchText'
-            search_headers = {
-                'Content-Type': 'application/json',
-                'X-Goog-Api-Key': api_key,
-                'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.types,places.nationalPhoneNumber,places.websiteUri,places.priceLevel,places.businessStatus'
-            }
-            
-            # Calculate grid spacing
-            step_lat = offset_lat(area_size) * (1 - overlap)
-            step_lng = offset_lng(area_size, lat) * (1 - overlap)
-            
-            print(f"Grid step: lat={step_lat:.6f}°, lng={step_lng:.6f}°")
-            
-            # Calculate grid bounds
-            half_grid = (grid_size - 1) / 2
-            start_lat = lat - half_grid * step_lat
-            start_lng = lng - half_grid * step_lng
-            
-            print(f"Grid bounds: lat {start_lat:.6f} to {lat + half_grid * step_lat:.6f}, lng {start_lng:.6f} to {lng + half_grid * step_lng:.6f}")
-            
-            # Search each grid cell with multiple keywords
-            total_searches = 0
-            for keyword in keywords:  # Search each keyword separately
-                print(f"Starting searches for keyword: '{keyword}'")
-                for i in range(grid_size):
-                    for j in range(grid_size):
-                        try:
-                            grid_lat = start_lat + i * step_lat
-                            grid_lng = start_lng + j * step_lng
-                            
-                            # Search payload for this grid cell
-                            payload = {
-                                'textQuery': keyword,  # Use each keyword
-                                'locationBias': {
-                                    'circle': {
-                                        'center': {
-                                            'latitude': grid_lat,
-                                            'longitude': grid_lng
-                                        },
-                                        'radius': area_size
-                                    }
+        places = {}
+        url = 'https://places.googleapis.com/v1/places:searchText'
+        search_headers = {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': api_key,
+            'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,'
+                              'places.rating,places.userRatingCount,places.types,places.nationalPhoneNumber,'
+                              'places.websiteUri,places.priceLevel,places.businessStatus,places.shortFormattedAddress,'
+                              'places.currentOpeningHours'
+        }
+        
+        details_url_base = 'https://places.googleapis.com/v1/places'  # Base URL for details requests
+        # Search for places in a grid pattern
+        for keyword in keywords:
+            for i in range(grid_size):
+                for j in range(grid_size):
+                    # Calculate cache key for this cell
+                    cache_key = f'places_search_{lat}_{lng}_{area_size}_{keyword}_{i}_{j}'
+                    cached_results = cache.get(cache_key)
+                    
+                    if cached_results:
+                        # Use cached results
+                        for place in cached_results:
+                            if place['place_id'] not in places:
+                                places[place['place_id']] = place
+                        continue
+
+                    # Calculate search coordinates for this grid cell
+                    offset_x = step * (i - grid_size // 2)
+                    offset_y = step * (j - grid_size // 2)
+                    
+                    lat_offset = offset_lat(offset_y)
+                    lng_offset = offset_lng(offset_x, lat)
+                    
+                    search_lat = lat + lat_offset
+                    search_lng = lng + lng_offset
+                    search_radius = int(step / 2)  # Use half the step size as search radius
+
+                    # Prepare the request payload
+                    payload = {
+                        'textQuery': keyword,
+                        'locationBias': {
+                            'circle': {
+                                'center': {
+                                    'latitude': search_lat,
+                                    'longitude': search_lng
                                 },
-                                'maxResultCount': 20
+                                'radius': search_radius
                             }
+                        },
+                        'maxResultCount': 20
+                    }
 
-                            # Make the API request for this grid cell
-                            total_searches += 1
-                            print(f"Search {total_searches}: Grid cell {i+1},{j+1}/{grid_size}x{grid_size} at lat:{grid_lat:.6f}, lng:{grid_lng:.6f} for '{keyword}'")
-                            data = self._make_request_with_retry(
-                                url=url,
-                                headers=search_headers,
-                                json=payload,
-                                method='post'
+                    cell_places = []
+                    # Make the API request with retries
+                    data = self._make_request_with_retry(
+                        url=url,
+                        headers=search_headers,
+                        json=payload,
+                        method='post'
+                    )
+                    
+                    if not data or 'places' not in data:
+                        # Cache empty results to avoid repeated calls
+                        cache.set(cache_key, [], timeout=3600)
+                        continue
+
+                    cell_places = []
+                    for place in data['places']:
+                        place_id = place.get('id')
+                        if place_id not in places:
+                            # Get additional details using Place Details API
+                            details_url = f'https://places.googleapis.com/v1/places/{place_id}'
+                            details_headers = {
+                                'Content-Type': 'application/json',
+                                'X-Goog-Api-Key': api_key,
+                                'X-Goog-FieldMask': 'id,displayName,formattedAddress,location,rating,userRatingCount,types,nationalPhoneNumber,websiteUri,priceLevel,businessStatus,shortFormattedAddress,currentOpeningHours'
+                            }
+                            details = self._make_request_with_retry(
+                                url=details_url,
+                                headers=details_headers
                             )
                             
-                            if data and 'places' in data:
-                                new_places_count = 0
-                                for place in data['places']:
-                                    place_id = place.get('id')
-                                    if place_id and place_id not in places:  # Avoid duplicates
-                                        formatted_place = self.format_place_data(place, place)
-                                        places[place_id] = formatted_place
-                                        new_places_count += 1
-                                print(f"  -> Found {len(data.get('places', []))} places, {new_places_count} new unique. Total so far: {len(places)}")
-                            else:
-                                print(f"  -> No data returned or API error")
-                        except Exception as e:
-                            print(f"Error in grid cell {i+1},{j+1} with '{keyword}': {str(e)}")
-                            continue
+                            # Format place data using our helper method
+                            formatted_place = self.format_place_data(place, details)
+                            places[place_id] = formatted_place
+                            cell_places.append(formatted_place)
 
-            # Prepare final response with metadata
-            response_data = {
-                'results': list(places.values()),
-                'metadata': {
-                    'total_results': len(places),
-                    'grid_searches_performed': total_searches,
-                    'search_parameters': {
-                        'category': category,
-                        'latitude': lat,
-                        'longitude': lng,
-                        'area_size': area_size,
-                        'grid_size': grid_size,
-                        'overlap': overlap,
-                        'area_size_km': area_size / 1000
-                    },
-                    'timestamp': datetime.now().isoformat()
-                }
+                    # Cache the results for this cell for 1 hour
+                    cache.set(cache_key, cell_places, timeout=3600)
+
+        # Prepare final response with metadata
+        response_data = {
+            'results': list(places.values()),
+            'metadata': {
+                'total_results': len(places),
+                'search_parameters': {
+                    'latitude': lat,
+                    'longitude': lng,
+                    'area_size_km': area_size / 1000,
+                    'cell_radius_m': int(step / 2),  # Search radius per grid cell
+                    'keywords': keywords,
+                    'grid_size': grid_size,
+                    'overlap': overlap
+                },
+                'timestamp': datetime.now().isoformat()
             }
-            
-            print(f"Grid search completed: {len(places)} {category} found from {total_searches} total searches")
-            return Response(response_data)
-            
-        except Exception as e:
-            print(f"Search error: {str(e)}")  # Debug log
-            import traceback
-            traceback.print_exc()  # Print full error trace
-            return Response(
-                {'error': f'Search failed: {str(e)}'}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        }
+
+        return Response(response_data)
 
 class GoogleGeocodingView(APIView):
     def get(self, request):
@@ -372,8 +358,8 @@ class GoogleGeocodingView(APIView):
                     'area_info': {
                         'type': place.get("types", ["UNKNOWN"])[0],
                         'name': place.get("formattedAddress", address),
-                        'grid_size': 7,  # Use fixed grid size
-                        'overlap': 0.5,  # Use fixed overlap
+                        'grid_size': 3,  # Use fixed grid size like your working code
+                        'overlap': 0.5,  # Use fixed overlap like your working code
                         'area_size': area_size
                     }
                 }]
