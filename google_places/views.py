@@ -15,9 +15,9 @@ class GooglePlacesHotelSearchView(APIView):
         for attempt in range(max_retries):
             try:
                 if method.lower() == 'post':
-                    response = requests.post(url, headers=headers, json=json, timeout=15)
+                    response = requests.post(url, headers=headers, json=json, timeout=30)
                 else:
-                    response = requests.get(url, headers=headers, timeout=15)
+                    response = requests.get(url, headers=headers, timeout=30)
                 
                 # For 400 errors, return empty dict immediately as these won't succeed with retry
                 if response.status_code == 400:
