@@ -129,7 +129,7 @@ class GooglePlacesHotelSearchView(APIView):
             lng = float(lng)
             # Get area size from request or use default
             area_size = request.query_params.get('area_size')
-            area_size = int(area_size) if area_size else 10000  # Default to 10km if not provided
+            area_size = int(area_size) if area_size else 3000  # Smaller radius for more precision
         except ValueError:
             return Response(
                 {'error': 'Invalid latitude or longitude.'}, 
@@ -142,8 +142,8 @@ class GooglePlacesHotelSearchView(APIView):
             print(f"Searching for category: {category}")  # Debug log
             
             # Get grid parameters from request or use defaults
-            grid_size = int(request.query_params.get('grid_size', 7))
-            overlap = float(request.query_params.get('overlap', 0.5))
+            grid_size = int(request.query_params.get('grid_size', 15))  # Many small searches
+            overlap = float(request.query_params.get('overlap', 0.7))   # High overlap for coverage
             
             earth_radius = 6378137  # meters
             step = area_size * (1 - overlap) * 2 / grid_size
@@ -193,6 +193,7 @@ class GooglePlacesHotelSearchView(APIView):
                     }
 
                     # Make the API request for this grid cell
+                    print(f"Searching grid cell {i+1},{j+1}/{grid_size}x{grid_size} at lat:{grid_lat:.6f}, lng:{grid_lng:.6f} for {category}")
                     data = self._make_request_with_retry(
                         url=url,
                         headers=search_headers,
@@ -201,11 +202,16 @@ class GooglePlacesHotelSearchView(APIView):
                     )
                     
                     if data and 'places' in data:
+                        new_places_count = 0
                         for place in data['places']:
                             place_id = place.get('id')
                             if place_id and place_id not in places:  # Avoid duplicates
                                 formatted_place = self.format_place_data(place, place)
                                 places[place_id] = formatted_place
+                                new_places_count += 1
+                        print(f"Grid cell {i+1},{j+1}: Found {len(data.get('places', []))} places, {new_places_count} new unique places. Total so far: {len(places)}")
+                    else:
+                        print(f"Grid cell {i+1},{j+1}: No data returned or API error")
 
             # Prepare final response with metadata
             response_data = {
