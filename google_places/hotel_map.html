@@ -838,6 +838,7 @@
                 const queryParams = new URLSearchParams({
                     latitude: params.latitude,
                     longitude: params.longitude,
+                    category: category,  // Add category parameter
                     ...(params.area_size && { area_size: params.area_size }),
                     ...(params.grid_size && { grid_size: params.grid_size }),
                     ...(params.overlap && { overlap: params.overlap })
@@ -1075,8 +1076,8 @@
                 const searchParams = {
                     latitude: location.lat,
                     longitude: location.lng,
-                    area_size: location.areaInfo?.area_size || 5000,  // Default 5km if not specified
-                    grid_size: location.areaInfo?.grid_size || 3,     // Default 3x3 grid if not specified
+                    area_size: location.areaInfo?.area_size || 10000,  // Default 10km if not specified
+                    grid_size: location.areaInfo?.grid_size || 7,     // Default 7x7 grid if not specified
                     overlap: location.areaInfo?.overlap || 0.5        // Default 50% overlap if not specified
                 };
                 

@@ -129,7 +129,7 @@ class GooglePlacesHotelSearchView(APIView):
             lng = float(lng)
             # Get area size from request or use default
             area_size = request.query_params.get('area_size')
-            area_size = int(area_size) if area_size else 5000  # Default to 5km if not provided
+            area_size = int(area_size) if area_size else 10000  # Default to 10km if not provided
         except ValueError:
             return Response(
                 {'error': 'Invalid latitude or longitude.'}, 
@@ -137,11 +137,12 @@ class GooglePlacesHotelSearchView(APIView):
             )
 
         try:
-            # Define search parameters
-            keywords = ['hotels', 'restaurants', 'mess', 'canteens']
+            # Get category from request parameter
+            category = request.query_params.get('category', 'hotels')  # Default to hotels if not provided
+            print(f"Searching for category: {category}")  # Debug log
             
             # Get grid parameters from request or use defaults
-            grid_size = int(request.query_params.get('grid_size', 3))
+            grid_size = int(request.query_params.get('grid_size', 7))
             overlap = float(request.query_params.get('overlap', 0.5))
             
             earth_radius = 6378137  # meters
@@ -161,50 +162,71 @@ class GooglePlacesHotelSearchView(APIView):
                 'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.types,places.nationalPhoneNumber,places.websiteUri,places.priceLevel,places.businessStatus'
             }
             
-            # Simple search payload
-            payload = {
-                'textQuery': 'hotels near me',
-                'locationBias': {
-                    'circle': {
-                        'center': {
-                            'latitude': lat,
-                            'longitude': lng
-                        },
-                        'radius': area_size
-                    }
-                },
-                'maxResultCount': 20
-            }
-
-            # Make the API request
-            data = self._make_request_with_retry(
-                url=url,
-                headers=search_headers,
-                json=payload,
-                method='post'
-            )
+            # Calculate grid spacing
+            step_lat = offset_lat(area_size) * (1 - overlap)
+            step_lng = offset_lng(area_size, lat) * (1 - overlap)
             
-            if data and 'places' in data:
-                for place in data['places']:
-                    place_id = place.get('id')
-                    if place_id:
-                        formatted_place = self.format_place_data(place, place)  # Use same data for details
-                        places[place_id] = formatted_place
+            # Calculate grid bounds
+            half_grid = (grid_size - 1) / 2
+            start_lat = lat - half_grid * step_lat
+            start_lng = lng - half_grid * step_lng
+            
+            # Search each grid cell
+            for i in range(grid_size):
+                for j in range(grid_size):
+                    grid_lat = start_lat + i * step_lat
+                    grid_lng = start_lng + j * step_lng
+                    
+                    # Search payload for this grid cell
+                    payload = {
+                        'textQuery': category,  # Use dynamic category from user input
+                        'locationBias': {
+                            'circle': {
+                                'center': {
+                                    'latitude': grid_lat,
+                                    'longitude': grid_lng
+                                },
+                                'radius': area_size
+                            }
+                        },
+                        'maxResultCount': 20
+                    }
+
+                    # Make the API request for this grid cell
+                    data = self._make_request_with_retry(
+                        url=url,
+                        headers=search_headers,
+                        json=payload,
+                        method='post'
+                    )
+                    
+                    if data and 'places' in data:
+                        for place in data['places']:
+                            place_id = place.get('id')
+                            if place_id and place_id not in places:  # Avoid duplicates
+                                formatted_place = self.format_place_data(place, place)
+                                places[place_id] = formatted_place
 
             # Prepare final response with metadata
             response_data = {
                 'results': list(places.values()),
                 'metadata': {
                     'total_results': len(places),
+                    'grid_searches_performed': grid_size * grid_size,
                     'search_parameters': {
+                        'category': category,
                         'latitude': lat,
                         'longitude': lng,
+                        'area_size': area_size,
+                        'grid_size': grid_size,
+                        'overlap': overlap,
                         'area_size_km': area_size / 1000
                     },
                     'timestamp': datetime.now().isoformat()
                 }
             }
-
+            
+            print(f"Grid search completed: {len(places)} {category} found from {grid_size}x{grid_size} grid")
             return Response(response_data)
             
         except Exception as e:
@@ -314,7 +336,7 @@ class GoogleGeocodingView(APIView):
                     'area_info': {
                         'type': place.get("types", ["UNKNOWN"])[0],
                         'name': place.get("formattedAddress", address),
-                        'grid_size': 3,  # Use fixed grid size
+                        'grid_size': 7,  # Use fixed grid size
                         'overlap': 0.5,  # Use fixed overlap
                         'area_size': area_size
                     }
