@@ -1,44 +1,51 @@
-# Python cache files
+# Virtual Environment
+agrointel/
+venv/
+env/
+.env
+.venv
+
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Virtual Environments
-agrointel/
-venv/
-ENV/
-env/
-.venv/
-
-# Django stuff
+# Django
 *.log
-*.pot
-*.pyc
-*.pyo
-*.pyd
-*.sqlite3
+local_settings.py
 db.sqlite3
 db.sqlite3-journal
 media/
 staticfiles/
 
-# Environment variables
-.env
-*.env
-
-# VS Code / IDE settings
+# IDE
 .vscode/
-*.code-workspace
 .idea/
-*.sublime-project
-*.sublime-workspace
+*.swp
+*.swo
 
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 
-# Pytest / Coverage
-.coverage
-coverage.xml
-htmlcov/
-.pytest_cache/
+# Temporary files
+*.tmp
+*.temp
