@@ -1,9 +1,9 @@
 from django.contrib import admin
 from django.urls import path
-from views import GooglePlacesHotelSearchView, GoogleGeocodingView
+import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('search/', GooglePlacesHotelSearchView.as_view(), name='places-search'),
-    path('geocode/', GoogleGeocodingView.as_view(), name='geocode'),
+    path('search/', views.GooglePlacesHotelSearchView.as_view(), name='places-search'),
+    path('geocode/', views.GoogleGeocodingView.as_view(), name='geocode'),
 ]
