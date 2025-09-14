@@ -129,7 +129,7 @@ class GooglePlacesHotelSearchView(APIView):
             lng = float(lng)
             # Get area size from request or use default
             area_size = request.query_params.get('area_size')
-            area_size = int(area_size) if area_size else 2000  # Very small radius for dense results
+            area_size = int(area_size) if area_size else 4000  # 4km radius for good coverage
         except ValueError:
             return Response(
                 {'error': 'Invalid latitude or longitude.'}, 
@@ -141,9 +141,21 @@ class GooglePlacesHotelSearchView(APIView):
             category = request.query_params.get('category', 'hotels')  # Default to hotels if not provided
             print(f"Searching for category: {category}")  # Debug log
             
-            # Get grid parameters from request or use defaults
-            grid_size = int(request.query_params.get('grid_size', 8))   # Moderate grid size
-            overlap = float(request.query_params.get('overlap', 0.8))   # Very high overlap for dense coverage
+            # Define search parameters - use multiple related keywords for better coverage
+            if category == 'hotels':
+                keywords = ['hotels', 'lodges', 'resorts', 'guest houses', 'accommodation']
+            elif category == 'restaurants':
+                keywords = ['restaurants', 'cafes', 'food', 'dining', 'eateries']
+            elif category == 'mess':
+                keywords = ['mess', 'canteen', 'hostel mess', 'dining hall']
+            elif category == 'canteens':
+                keywords = ['canteens', 'cafeteria', 'food court', 'mess']
+            else:
+                keywords = [category]  # fallback to the category itself
+            
+            # Get grid parameters from request or use defaults  
+            grid_size = int(request.query_params.get('grid_size', 5))   # 5x5 for better coverage
+            overlap = float(request.query_params.get('overlap', 0.6))   # 60% overlap
             
             earth_radius = 6378137  # meters
             step = area_size * (1 - overlap) * 2 / grid_size
@@ -176,54 +188,55 @@ class GooglePlacesHotelSearchView(APIView):
             
             print(f"Grid bounds: lat {start_lat:.6f} to {lat + half_grid * step_lat:.6f}, lng {start_lng:.6f} to {lng + half_grid * step_lng:.6f}")
             
-            # Search each grid cell
-            for i in range(grid_size):
-                for j in range(grid_size):
-                    grid_lat = start_lat + i * step_lat
-                    grid_lng = start_lng + j * step_lng
-                    
-                    # Search payload for this grid cell
-                    payload = {
-                        'textQuery': category,  # Use dynamic category from user input
-                        'locationBias': {
-                            'circle': {
-                                'center': {
-                                    'latitude': grid_lat,
-                                    'longitude': grid_lng
-                                },
-                                'radius': area_size
-                            }
-                        },
-                        'maxResultCount': 20
-                    }
+            # Search each grid cell with multiple keywords
+            for keyword in keywords:  # Search each keyword separately
+                for i in range(grid_size):
+                    for j in range(grid_size):
+                        grid_lat = start_lat + i * step_lat
+                        grid_lng = start_lng + j * step_lng
+                        
+                        # Search payload for this grid cell
+                        payload = {
+                            'textQuery': keyword,  # Use each keyword
+                            'locationBias': {
+                                'circle': {
+                                    'center': {
+                                        'latitude': grid_lat,
+                                        'longitude': grid_lng
+                                    },
+                                    'radius': area_size
+                                }
+                            },
+                            'maxResultCount': 20
+                        }
 
-                    # Make the API request for this grid cell
-                    print(f"Searching grid cell {i+1},{j+1}/{grid_size}x{grid_size} at lat:{grid_lat:.6f}, lng:{grid_lng:.6f} for {category}")
-                    data = self._make_request_with_retry(
-                        url=url,
-                        headers=search_headers,
-                        json=payload,
-                        method='post'
-                    )
-                    
-                    if data and 'places' in data:
-                        new_places_count = 0
-                        for place in data['places']:
-                            place_id = place.get('id')
-                            if place_id and place_id not in places:  # Avoid duplicates
-                                formatted_place = self.format_place_data(place, place)
-                                places[place_id] = formatted_place
-                                new_places_count += 1
-                        print(f"Grid cell {i+1},{j+1}: Found {len(data.get('places', []))} places, {new_places_count} new unique places. Total so far: {len(places)}")
-                    else:
-                        print(f"Grid cell {i+1},{j+1}: No data returned or API error")
+                        # Make the API request for this grid cell
+                        print(f"Searching grid cell {i+1},{j+1}/{grid_size}x{grid_size} at lat:{grid_lat:.6f}, lng:{grid_lng:.6f} for {keyword}")
+                        data = self._make_request_with_retry(
+                            url=url,
+                            headers=search_headers,
+                            json=payload,
+                            method='post'
+                        )
+                        
+                        if data and 'places' in data:
+                            new_places_count = 0
+                            for place in data['places']:
+                                place_id = place.get('id')
+                                if place_id and place_id not in places:  # Avoid duplicates
+                                    formatted_place = self.format_place_data(place, place)
+                                    places[place_id] = formatted_place
+                                    new_places_count += 1
+                            print(f"Grid cell {i+1},{j+1} with '{keyword}': Found {len(data.get('places', []))} places, {new_places_count} new unique places. Total so far: {len(places)}")
+                        else:
+                            print(f"Grid cell {i+1},{j+1} with '{keyword}': No data returned or API error")
 
             # Prepare final response with metadata
             response_data = {
                 'results': list(places.values()),
                 'metadata': {
                     'total_results': len(places),
-                    'grid_searches_performed': grid_size * grid_size,
+                    'grid_searches_performed': grid_size * grid_size * len(keywords),
                     'search_parameters': {
                         'category': category,
                         'latitude': lat,
@@ -237,7 +250,7 @@ class GooglePlacesHotelSearchView(APIView):
                 }
             }
             
-            print(f"Grid search completed: {len(places)} {category} found from {grid_size}x{grid_size} grid")
+            print(f"Grid search completed: {len(places)} {category} found from {grid_size}x{grid_size} grid with {len(keywords)} keywords ({grid_size * grid_size * len(keywords)} total searches)")
             return Response(response_data)
             
         except Exception as e:

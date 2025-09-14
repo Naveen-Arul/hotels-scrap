@@ -1076,9 +1076,9 @@
                 const searchParams = {
                     latitude: location.lat,
                     longitude: location.lng,
-                    area_size: location.areaInfo?.area_size || 2000,   // 2km radius for very focused search
-                    grid_size: location.areaInfo?.grid_size || 8,      // 8x8 = 64 searches
-                    overlap: location.areaInfo?.overlap || 0.8         // 80% overlap for dense coverage
+                    area_size: location.areaInfo?.area_size || 4000,   // 4km radius
+                    grid_size: location.areaInfo?.grid_size || 5,      // 5x5 = 25 cells
+                    overlap: location.areaInfo?.overlap || 0.6         // 60% overlap
                 };
                 
                 await fetchAndDisplayHotels(searchParams);
