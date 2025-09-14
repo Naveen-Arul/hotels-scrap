@@ -1,24 +1,21 @@
-from django.contrib import admin
 from django.urls import path
 from django.http import HttpResponse
 import views
+import os
 
-def home(request):
-    return HttpResponse("""
-    <h1>🏨 Hotels Scrap API is Live! 🎉</h1>
-    <p>Your Django app is successfully deployed on Render!</p>
-    <h3>Available Endpoints:</h3>
-    <ul>
-        <li><a href="/search/">/search/</a> - Hotel search API</li>
-        <li><a href="/geocode/">/geocode/</a> - Geocoding API</li>
-        <li><a href="/hotel_map.html">/hotel_map.html</a> - Hotel Map Frontend</li>
-    </ul>
-    <p><strong>Deployment Status:</strong> ✅ SUCCESS</p>
-    """)
+def hotel_map_home(request):
+    """Serve the hotel map as the only page"""
+    try:
+        # Read the hotel_map.html file
+        file_path = os.path.join(os.path.dirname(__file__), 'hotel_map.html')
+        with open(file_path, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        return HttpResponse(html_content, content_type='text/html')
+    except FileNotFoundError:
+        return HttpResponse("Hotel map not found", status=404)
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('', home, name='home'),  # Homepage
+    path('', hotel_map_home, name='home'),  # ONLY hotel map - nothing else
     path('search/', views.GooglePlacesHotelSearchView.as_view(), name='places-search'),
     path('geocode/', views.GoogleGeocodingView.as_view(), name='geocode'),
 ]
