@@ -94,6 +94,7 @@ class GooglePlacesHotelSearchView(APIView):
             # Get query parameters
             lat = request.query_params.get('latitude')
             lng = request.query_params.get('longitude')
+            category = request.query_params.get('category', 'hotels')  # Get category from dropdown
             api_key = os.getenv('GOOGLE_PLACES_API_KEY')
 
             if not (lat and lng):
@@ -129,8 +130,25 @@ class GooglePlacesHotelSearchView(APIView):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
 
-            # Define search parameters - optimized for deployment
-            keywords = ['hotels', 'restaurants']  # Reduced keywords for better performance
+            # Define search parameters - optimized for deployment with category support
+            if category == 'restaurants':
+                keywords = ['restaurants', 'dining']
+            elif category == 'fruits':
+                keywords = ['fruit shop', 'fresh fruits']
+            elif category == 'juice':
+                keywords = ['juice bar', 'fresh juice']
+            elif category == 'vegetables':
+                keywords = ['vegetable market', 'fresh vegetables']
+            elif category == 'grocery':
+                keywords = ['grocery store', 'supermarket']
+            elif category == 'mess':
+                keywords = ['mess', 'canteen']
+            elif category == 'canteens':
+                keywords = ['canteen', 'food court']
+            else:  # default to hotels
+                keywords = ['hotels', 'lodging']
+            
+            print(f"DEBUG: Category '{category}' using keywords: {keywords}")
             
             # Get grid parameters from request or use defaults optimized for Render
             grid_size = int(request.query_params.get('grid_size', 3))  # Back to 3x3 for more coverage
@@ -166,8 +184,8 @@ class GooglePlacesHotelSearchView(APIView):
                 for i in range(grid_size):
                     for j in range(grid_size):
                         try:
-                            # Calculate cache key for this cell
-                            cache_key = f'places_search_{lat}_{lng}_{area_size_meters}_{keyword}_{i}_{j}'
+                            # Calculate cache key for this cell - include category to prevent cross-category cache pollution
+                            cache_key = f'places_search_{lat}_{lng}_{area_size_meters}_{category}_{keyword}_{i}_{j}'
                             cached_results = cache.get(cache_key)
                             
                             if cached_results:
