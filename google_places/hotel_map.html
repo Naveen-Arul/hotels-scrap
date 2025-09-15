@@ -896,7 +896,7 @@
                     grid_size: params.grid_size,
                     overlap: params.overlap
                 });
-                const url = `https://hotels-scrap-kisanmitra.onrender.com/search/?${searchParams.toString()}`;                  console.log('Making API request to:', url); // Debug log
+                const url = `http://127.0.0.1:8000/search/?${searchParams.toString()}`;                  console.log('Making API request to:', url); // Debug log
                 
                 // Start the fetch with timeout for better user feedback
                 const startTime = Date.now();
@@ -997,7 +997,7 @@
             geocodeStatus.textContent = 'Geocoding address...';
             
             try {
-                                const response = await fetch(`https://hotels-scrap-kisanmitra.onrender.com/geocode/?address=${encodeURIComponent(address)}`);  
+                                const response = await fetch(`http://127.0.0.1:8000/geocode/?address=${encodeURIComponent(address)}`);  
                 const data = await response.json();
 
                 if (!response.ok) {
