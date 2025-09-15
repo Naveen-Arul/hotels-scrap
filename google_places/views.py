@@ -103,8 +103,6 @@ class GooglePlacesHotelSearchView(APIView):
             lat = request.query_params.get('latitude')
             lng = request.query_params.get('longitude')
             api_key = os.getenv('GOOGLE_PLACES_API_KEY')
-            
-            print(f"DEBUG: lat={lat}, lng={lng}, api_key={'SET' if api_key else 'NOT SET'}")
 
             if not (lat and lng):
                 return Response(
@@ -113,7 +111,6 @@ class GooglePlacesHotelSearchView(APIView):
                 )
 
             if not api_key:
-                print("ERROR: API key not found in environment variables")
                 return Response(
                     {'error': 'Google API key is not configured'}, 
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -125,9 +122,6 @@ class GooglePlacesHotelSearchView(APIView):
                 # Get area size from request or use default (in meters)
                 area_size_param = request.query_params.get('area_size')
                 area_size_meters = int(area_size_param) if area_size_param else 5000  # Default to 5km if not provided
-                
-                # Debug logging
-                print(f"DEBUG: lat={lat}, lng={lng}, area_size_param={area_size_param}, area_size_meters={area_size_meters}")
                 print(f"DEBUG: API key exists: {bool(api_key)}")
                 
             except ValueError as e:
@@ -150,15 +144,11 @@ class GooglePlacesHotelSearchView(APIView):
             grid_size = int(request.query_params.get('grid_size', 3))
             overlap = float(request.query_params.get('overlap', 0.5))
             
-            print(f"DEBUG: area_size_meters={area_size_meters}, grid_size={grid_size}, overlap={overlap}")
-            
             # Convert meters to degrees for calculation
             earth_radius = 6378137  # meters
             area_size_degrees = area_size_meters / earth_radius * (180 / math.pi)  # Convert to degrees
             step_meters = area_size_meters * (1 - overlap) * 2 / grid_size
             step = step_meters
-            
-            print(f"DEBUG: step_meters={step_meters}, area_size_degrees={area_size_degrees}")
 
             def offset_lat(d):
                 return (d / earth_radius) * (180 / math.pi)
@@ -179,20 +169,16 @@ class GooglePlacesHotelSearchView(APIView):
             
             details_url_base = 'https://places.googleapis.com/v1/places'  # Base URL for details requests
             
-            print(f"DEBUG: Starting grid search with grid_size={grid_size}, keywords={keywords}")
             # Search for places in a grid pattern
             for keyword in keywords:
-                print(f"DEBUG: Searching for keyword: {keyword}")
                 for i in range(grid_size):
                     for j in range(grid_size):
                         try:
-                            print(f"DEBUG: Processing grid cell [{i}][{j}]")
                             # Calculate cache key for this cell
                             cache_key = f'places_search_{lat}_{lng}_{area_size_meters}_{keyword}_{i}_{j}'
                             cached_results = cache.get(cache_key)
                             
                             if cached_results:
-                                print(f"DEBUG: Using cached results for cell [{i}][{j}]")
                                 # Use cached results
                                 for place in cached_results:
                                     if place['place_id'] not in places:
@@ -225,9 +211,7 @@ class GooglePlacesHotelSearchView(APIView):
                                 'maxResultCount': 20
                             }
 
-                            cell_places = []
                             # Make the API request with retries
-                            print(f"DEBUG: Making API request for keyword='{keyword}' at grid[{i},{j}], lat={search_lat}, lng={search_lng}, radius={search_radius}")
                             data = self._make_request_with_retry(
                                 url=url,
                                 headers=search_headers,
@@ -235,7 +219,6 @@ class GooglePlacesHotelSearchView(APIView):
                                 method='post'
                             )
                             
-                            print(f"DEBUG: API response data type: {type(data)}, has 'places': {'places' in data if isinstance(data, dict) else False}")
                             if not data or 'places' not in data:
                                 # Cache empty results to avoid repeated calls
                                 cache.set(cache_key, [], timeout=3600)
