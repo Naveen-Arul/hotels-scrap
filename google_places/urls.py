@@ -2,6 +2,7 @@ from django.urls import path
 from django.http import HttpResponse
 import views
 import health
+import optimized_search
 import os
 
 def hotel_map_home(request):
@@ -17,7 +18,8 @@ def hotel_map_home(request):
 
 urlpatterns = [
     path('', hotel_map_home, name='home'),  # ONLY hotel map - nothing else
-    path('search/', views.GooglePlacesHotelSearchView.as_view(), name='places-search'),
+    path('search/', optimized_search.OptimizedGooglePlacesSearchView.as_view(), name='places-search'),  # Use optimized version
+    path('search-original/', views.GooglePlacesHotelSearchView.as_view(), name='places-search-original'),  # Keep original as backup
     path('geocode/', views.GoogleGeocodingView.as_view(), name='geocode'),
     path('health/', health.HealthCheckView.as_view(), name='health-check'),
 ]

@@ -10,14 +10,14 @@ from rest_framework import status
 from django.core.cache import cache
 
 class GooglePlacesHotelSearchView(APIView):
-    def _make_request_with_retry(self, url: str, headers: Dict, json: Dict = None, method: str = 'get', max_retries: int = 3) -> Dict:
-        """Make a request with retry logic"""
+    def _make_request_with_retry(self, url: str, headers: Dict, json: Dict = None, method: str = 'get', max_retries: int = 1) -> Dict:
+        """Make a request with minimal retry for faster response on Render"""
         for attempt in range(max_retries):
             try:
                 if method.lower() == 'post':
-                    response = requests.post(url, headers=headers, json=json, timeout=15)
+                    response = requests.post(url, headers=headers, json=json, timeout=8)  # Reduced from 15s
                 else:
-                    response = requests.get(url, headers=headers, timeout=15)
+                    response = requests.get(url, headers=headers, timeout=8)
                 
                 # For 400 errors, return empty dict immediately as these won't succeed with retry
                 if response.status_code == 400:
@@ -31,15 +31,12 @@ class GooglePlacesHotelSearchView(APIView):
                 return response.json()
             except requests.RequestException as e:
                 if attempt == max_retries - 1:  # Last attempt failed
-                    error_msg = f"All {max_retries} attempts failed for {url}"
-                    if hasattr(e, 'response') and hasattr(e.response, 'text'):
-                        error_msg += f"\nResponse: {e.response.text}"
+                    error_msg = f"Request failed after {max_retries} attempts for {url}: {str(e)}"
                     print(error_msg)
                     return {}
                 # Only retry on network errors or 5xx errors
                 if not hasattr(e, 'response') or (500 <= e.response.status_code < 600):
-                    time.sleep(1 * (attempt + 1))  # Progressive delay
-                    continue
+                    continue  # Removed sleep delay for speed
                 return {}
         return {}
 
