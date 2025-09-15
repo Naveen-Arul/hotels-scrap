@@ -1075,8 +1075,8 @@
                     latitude: location.lat,
                     longitude: location.lng,
                     area_size: location.areaInfo?.area_size || 5000,   // 5km radius like your working code
-                    grid_size: location.areaInfo?.grid_size || 2,      // 2x2 grid optimized for Render deployment
-                    overlap: location.areaInfo?.overlap || 0.6         // 60% overlap for better coverage with fewer cells
+                    grid_size: location.areaInfo?.grid_size || 3,      // 3x3 grid for better coverage
+                    overlap: location.areaInfo?.overlap || 0.4         // 40% overlap for better performance
                 };
                 
                 await fetchAndDisplayHotels(searchParams);

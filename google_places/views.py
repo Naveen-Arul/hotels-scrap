@@ -51,28 +51,20 @@ class GooglePlacesHotelSearchView(APIView):
         if not phone_number:
             phone_number = place.get('internationalPhoneNumber') or details.get('internationalPhoneNumber')
 
-        # Process opening hours
+        # Process opening hours - simplified for better performance
         opening_hours = place.get('currentOpeningHours') or details.get('currentOpeningHours', {})
         is_open = False
-        current_opening_hours = "Closed"
+        current_opening_hours = "Hours not available"
+        weekday_texts = []
         
         if opening_hours:
-            # Check if the place is currently open
             weekday_texts = opening_hours.get('weekdayDescriptions', [])
-            periods = opening_hours.get('periods', [])
-            if periods:
-                now = datetime.now()
-                current_weekday = now.weekday()
-                current_time = now.strftime('%H:%M')
-                
-                for period in periods:
-                    if period.get('open', {}).get('day') == current_weekday:
-                        open_time = period.get('open', {}).get('time', '')
-                        close_time = period.get('close', {}).get('time', '')
-                        if open_time and close_time and open_time <= current_time <= close_time:
-                            is_open = True
-                            current_opening_hours = "Open"
-                            break
+            # Simplified open status check
+            if opening_hours.get('openNow'):
+                is_open = True
+                current_opening_hours = "Open"
+            elif weekday_texts:
+                current_opening_hours = "Check hours"
 
         return {
             'place_id': place['id'],
@@ -86,13 +78,13 @@ class GooglePlacesHotelSearchView(APIView):
             'user_ratings_total': place.get('userRatingCount', 0),
             'types': place.get('types', []),
             'phone_number': phone_number or "Not available",
-            'website': details.get('websiteUri') or place.get('websiteUri'),
+            'website': details.get('websiteUri') or place.get('websiteUri') or "Not available",
             'price_level': place.get('priceLevel'),
             'business_status': place.get('businessStatus', 'OPERATIONAL'),
-            'opening_hours': weekday_texts if 'weekday_texts' in locals() and weekday_texts else [],
+            'opening_hours': weekday_texts,
             'current_status': current_opening_hours,
             'is_open': is_open,
-            'primary_type': place.get('types', ['PLACE'])[0].replace('_', ' ').title(),
+            'primary_type': place.get('types', ['PLACE'])[0].replace('_', ' ').title() if place.get('types') else 'Place',
             'short_address': place.get('shortFormattedAddress', full_address).split(',')[0],
             'has_phone': bool(phone_number)
         }
@@ -137,12 +129,12 @@ class GooglePlacesHotelSearchView(APIView):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
 
-            # Define search parameters
-            keywords = ['hotels', 'restaurants', 'mess', 'canteens']
+            # Define search parameters - optimized for deployment
+            keywords = ['hotels', 'restaurants']  # Reduced keywords for better performance
             
             # Get grid parameters from request or use defaults optimized for Render
-            grid_size = int(request.query_params.get('grid_size', 2))  # Changed from 3 to 2 for faster deployment
-            overlap = float(request.query_params.get('overlap', 0.6))  # Increased overlap to maintain coverage
+            grid_size = int(request.query_params.get('grid_size', 3))  # Back to 3x3 for more coverage
+            overlap = float(request.query_params.get('overlap', 0.4))  # Reduced overlap for better performance
             
             # Convert meters to degrees for calculation
             earth_radius = 6378137  # meters
@@ -228,20 +220,8 @@ class GooglePlacesHotelSearchView(APIView):
                             for place in data['places']:
                                 place_id = place.get('id')
                                 if place_id not in places:
-                                    # Get additional details using Place Details API
-                                    details_url = f'https://places.googleapis.com/v1/places/{place_id}'
-                                    details_headers = {
-                                        'Content-Type': 'application/json',
-                                        'X-Goog-Api-Key': api_key,
-                                        'X-Goog-FieldMask': 'id,displayName,formattedAddress,location,rating,userRatingCount,types,nationalPhoneNumber,websiteUri,priceLevel,businessStatus,shortFormattedAddress,currentOpeningHours'
-                                    }
-                                    details = self._make_request_with_retry(
-                                        url=details_url,
-                                        headers=details_headers
-                                    )
-                                    
-                                    # Format place data using our helper method
-                                    formatted_place = self.format_place_data(place, details)
+                                    # Format place data directly from search results (skip details API for better performance)
+                                    formatted_place = self.format_place_data(place, None)
                                     places[place_id] = formatted_place
                                     cell_places.append(formatted_place)
 
