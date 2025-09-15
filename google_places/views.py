@@ -122,9 +122,9 @@ class GooglePlacesHotelSearchView(APIView):
             try:
                 lat = float(lat)
                 lng = float(lng)
-                # Get area size from request or use default
-                area_size = request.query_params.get('area_size')
-                area_size = int(area_size) if area_size else 5000  # Default to 5km if not provided
+                # Get area size from request or use default (in meters)
+                area_size_param = request.query_params.get('area_size')
+                area_size_meters = int(area_size_param) if area_size_param else 5000  # Default to 5km if not provided
             except ValueError:
                 return Response(
                     {'error': 'Invalid latitude or longitude.'}, 
@@ -138,8 +138,11 @@ class GooglePlacesHotelSearchView(APIView):
             grid_size = int(request.query_params.get('grid_size', 3))
             overlap = float(request.query_params.get('overlap', 0.5))
             
+            # Convert meters to degrees for calculation
             earth_radius = 6378137  # meters
-            step = area_size * (1 - overlap) * 2 / grid_size
+            area_size_degrees = area_size_meters / earth_radius * (180 / math.pi)  # Convert to degrees
+            step_meters = area_size_meters * (1 - overlap) * 2 / grid_size
+            step = step_meters
 
             def offset_lat(d):
                 return (d / earth_radius) * (180 / math.pi)
@@ -165,7 +168,7 @@ class GooglePlacesHotelSearchView(APIView):
                     for j in range(grid_size):
                         try:
                             # Calculate cache key for this cell
-                            cache_key = f'places_search_{lat}_{lng}_{area_size}_{keyword}_{i}_{j}'
+                            cache_key = f'places_search_{lat}_{lng}_{area_size_meters}_{keyword}_{i}_{j}'
                             cached_results = cache.get(cache_key)
                             
                             if cached_results:
@@ -184,7 +187,7 @@ class GooglePlacesHotelSearchView(APIView):
                             
                             search_lat = lat + lat_offset
                             search_lng = lng + lng_offset
-                            search_radius = int(step / 2)  # Use half the step size as search radius
+                            search_radius = int(step * 0.7)  # Use 70% of step size as radius in meters
 
                             # Prepare the request payload
                             payload = {
@@ -250,7 +253,7 @@ class GooglePlacesHotelSearchView(APIView):
                     'search_parameters': {
                         'latitude': lat,
                         'longitude': lng,
-                        'area_size_km': area_size / 1000,
+                        'area_size_km': area_size_meters / 1000,
                         'cell_radius_m': int(step / 2),  # Search radius per grid cell
                         'keywords': keywords,
                         'grid_size': grid_size,
