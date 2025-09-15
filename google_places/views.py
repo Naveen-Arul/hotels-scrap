@@ -140,9 +140,9 @@ class GooglePlacesHotelSearchView(APIView):
             # Define search parameters
             keywords = ['hotels', 'restaurants', 'mess', 'canteens']
             
-            # Get grid parameters from request or use defaults
-            grid_size = int(request.query_params.get('grid_size', 3))
-            overlap = float(request.query_params.get('overlap', 0.5))
+            # Get grid parameters from request or use defaults optimized for Render
+            grid_size = int(request.query_params.get('grid_size', 2))  # Changed from 3 to 2 for faster deployment
+            overlap = float(request.query_params.get('overlap', 0.6))  # Increased overlap to maintain coverage
             
             # Convert meters to degrees for calculation
             earth_radius = 6378137  # meters
@@ -368,8 +368,8 @@ class GoogleGeocodingView(APIView):
                     'area_info': {
                         'type': place.get("types", ["UNKNOWN"])[0],
                         'name': place.get("formattedAddress", address),
-                        'grid_size': 3,  # Use fixed grid size like your working code
-                        'overlap': 0.5,  # Use fixed overlap like your working code
+                        'grid_size': 2,  # Optimized 2x2 grid for Render deployment
+                        'overlap': 0.6,  # Increased overlap for better coverage
                         'area_size': area_size
                     }
                 }]
