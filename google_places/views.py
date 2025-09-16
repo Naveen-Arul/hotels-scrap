@@ -366,8 +366,8 @@ class GoogleGeocodingView(APIView):
                     'area_info': {
                         'type': place.get("types", ["UNKNOWN"])[0],
                         'name': place.get("formattedAddress", address),
-                        'grid_size': 2,  # Optimized 2x2 grid for Render deployment
-                        'overlap': 0.6,  # Increased overlap for better coverage
+                        'grid_size': 3,  # Match backend default (3x3 grid)
+                        'overlap': 0.4,  # Match backend default (40% overlap)
                         'area_size': area_size
                     }
                 }]
