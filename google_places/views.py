@@ -96,23 +96,10 @@ class GooglePlacesHotelSearchView(APIView):
         This method is separated so other endpoints can call the same logic (e.g. consolidated API).
         """
         try:
-            # Define search keywords by category (same mapping as in get)
-            if category == 'restaurants':
-                keywords = ['restaurants', 'dining']
-            elif category == 'fruits':
-                keywords = ['fruit shop', 'fresh fruits']
-            elif category == 'juice':
-                keywords = ['juice bar', 'fresh juice']
-            elif category == 'vegetables':
-                keywords = ['vegetable market', 'fresh vegetables']
-            elif category == 'grocery':
-                keywords = ['grocery store', 'supermarket']
-            elif category == 'mess':
-                keywords = ['mess', 'canteen']
-            elif category == 'canteens':
-                keywords = ['canteen', 'food court']
-            else:
-                keywords = ['hotels', 'lodging']
+            # Use the provided category only — do not expand into hardcoded synonyms.
+            # This makes the API behavior deterministic: the endpoint's `category` value
+            # will be passed directly as the single search keyword to Google Places.
+            keywords = [category]
 
             # Convert meters to degrees for calculation
             earth_radius = 6378137  # meters
