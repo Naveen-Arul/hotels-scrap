@@ -33,6 +33,7 @@ def hotel_map_home(request):
 urlpatterns = [
     path('', hotel_map_home, name='home'),  # ONLY hotel map - nothing else
     path('search/', views.GooglePlacesHotelSearchView.as_view(), name='places-search'),
+    path('api/search/', views.ConsolidatedPlacesAPI.as_view(), name='api-places-search'),
     path('geocode/', views.GoogleGeocodingView.as_view(), name='geocode'),
     path('health/', health.HealthCheckView.as_view(), name='health-check'),
 ]

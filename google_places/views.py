@@ -89,48 +89,14 @@ class GooglePlacesHotelSearchView(APIView):
             'has_phone': bool(phone_number)
         }
 
-    def get(self, request):
+    def perform_search(self, lat: float, lng: float, category: str = 'hotels', area_size_meters: int = 5000,
+                       grid_size: int = 3, overlap: float = 0.4, max_results_per_cell: int = 20) -> Dict:
+        """Perform the grid search and return aggregated results dict (same shape as get response).
+
+        This method is separated so other endpoints can call the same logic (e.g. consolidated API).
+        """
         try:
-            # Get query parameters
-            lat = request.query_params.get('latitude')
-            lng = request.query_params.get('longitude')
-            category = request.query_params.get('category', 'hotels')  # Get category from dropdown
-            api_key = os.getenv('GOOGLE_PLACES_API_KEY')
-
-            if not (lat and lng):
-                return Response(
-                    {'error': 'latitude and longitude are required.'}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            if not api_key:
-                return Response(
-                    {'error': 'Google API key is not configured'}, 
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-
-            try:
-                lat = float(lat)
-                lng = float(lng)
-                # Get area size from request or use default (in meters)
-                area_size_param = request.query_params.get('area_size')
-                area_size_meters = int(area_size_param) if area_size_param else 5000  # Default to 5km if not provided
-                print(f"DEBUG: API key exists: {bool(api_key)}")
-                
-            except ValueError as e:
-                print(f"DEBUG: ValueError in parameter parsing: {e}")
-                return Response(
-                    {'error': 'Invalid latitude or longitude.'}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            except Exception as e:
-                print(f"DEBUG: Unexpected error in parameter parsing: {e}")
-                return Response(
-                    {'error': f'Parameter parsing error: {str(e)}'}, 
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-
-            # Define search parameters - optimized for deployment with category support
+            # Define search keywords by category (same mapping as in get)
             if category == 'restaurants':
                 keywords = ['restaurants', 'dining']
             elif category == 'fruits':
@@ -145,20 +111,12 @@ class GooglePlacesHotelSearchView(APIView):
                 keywords = ['mess', 'canteen']
             elif category == 'canteens':
                 keywords = ['canteen', 'food court']
-            else:  # default to hotels
+            else:
                 keywords = ['hotels', 'lodging']
-            
-            print(f"DEBUG: Category '{category}' using keywords: {keywords}")
-            
-            # Get grid parameters from request or use defaults optimized for Render
-            grid_size = int(request.query_params.get('grid_size', 3))  # Back to 3x3 for more coverage
-            overlap = float(request.query_params.get('overlap', 0.4))  # Reduced overlap for better performance
-            
+
             # Convert meters to degrees for calculation
             earth_radius = 6378137  # meters
-            area_size_degrees = area_size_meters / earth_radius * (180 / math.pi)  # Convert to degrees
             step_meters = area_size_meters * (1 - overlap) * 2 / grid_size
-            step = step_meters
 
             def offset_lat(d):
                 return (d / earth_radius) * (180 / math.pi)
@@ -168,6 +126,7 @@ class GooglePlacesHotelSearchView(APIView):
 
             places = {}
             url = 'https://places.googleapis.com/v1/places:searchText'
+            api_key = os.getenv('GOOGLE_PLACES_API_KEY')
             search_headers = {
                 'Content-Type': 'application/json',
                 'X-Goog-Api-Key': api_key,
@@ -176,37 +135,29 @@ class GooglePlacesHotelSearchView(APIView):
                                   'places.websiteUri,places.priceLevel,places.businessStatus,places.shortFormattedAddress,'
                                   'places.currentOpeningHours'
             }
-            
-            details_url_base = 'https://places.googleapis.com/v1/places'  # Base URL for details requests
-            
-            # Search for places in a grid pattern
+
             for keyword in keywords:
                 for i in range(grid_size):
                     for j in range(grid_size):
                         try:
-                            # Calculate cache key for this cell - include category to prevent cross-category cache pollution
                             cache_key = f'places_search_{lat}_{lng}_{area_size_meters}_{category}_{keyword}_{i}_{j}'
                             cached_results = cache.get(cache_key)
-                            
                             if cached_results:
-                                # Use cached results
                                 for place in cached_results:
                                     if place['place_id'] not in places:
                                         places[place['place_id']] = place
                                 continue
 
-                            # Calculate search coordinates for this grid cell
-                            offset_x = step * (i - grid_size // 2)
-                            offset_y = step * (j - grid_size // 2)
-                            
+                            offset_x = step_meters * (i - grid_size // 2)
+                            offset_y = step_meters * (j - grid_size // 2)
+
                             lat_offset = offset_lat(offset_y)
                             lng_offset = offset_lng(offset_x, lat)
-                            
+
                             search_lat = lat + lat_offset
                             search_lng = lng + lng_offset
-                            search_radius = int(step * 0.7)  # Use 70% of step size as radius in meters
+                            search_radius = int(step_meters * 0.7)
 
-                            # Prepare the request payload
                             payload = {
                                 'textQuery': keyword,
                                 'locationBias': {
@@ -218,38 +169,33 @@ class GooglePlacesHotelSearchView(APIView):
                                         'radius': search_radius
                                     }
                                 },
-                                'maxResultCount': 20
+                                'maxResultCount': max_results_per_cell
                             }
 
-                            # Make the API request with retries
                             data = self._make_request_with_retry(
                                 url=url,
                                 headers=search_headers,
                                 json=payload,
                                 method='post'
                             )
-                            
+
                             if not data or 'places' not in data:
-                                # Cache empty results to avoid repeated calls
                                 cache.set(cache_key, [], timeout=3600)
                                 continue
 
                             cell_places = []
                             for place in data['places']:
                                 place_id = place.get('id')
-                                if place_id not in places:
-                                    # Format place data directly from search results (skip details API for better performance)
+                                if place_id and place_id not in places:
                                     formatted_place = self.format_place_data(place, None)
                                     places[place_id] = formatted_place
                                     cell_places.append(formatted_place)
 
-                            # Cache the results for this cell for 1 hour
                             cache.set(cache_key, cell_places, timeout=3600)
                         except Exception as e:
                             print(f"Error in grid cell {i},{j} for keyword {keyword}: {str(e)}")
                             continue
 
-            # Prepare final response with metadata
             response_data = {
                 'results': list(places.values()),
                 'metadata': {
@@ -258,7 +204,7 @@ class GooglePlacesHotelSearchView(APIView):
                         'latitude': lat,
                         'longitude': lng,
                         'area_size_km': area_size_meters / 1000,
-                        'cell_radius_m': int(step / 2),  # Search radius per grid cell
+                        'cell_radius_m': int(step_meters / 2),
                         'keywords': keywords,
                         'grid_size': grid_size,
                         'overlap': overlap
@@ -266,17 +212,100 @@ class GooglePlacesHotelSearchView(APIView):
                     'timestamp': datetime.now().isoformat()
                 }
             }
+            return response_data
+        except Exception as e:
+            print(f"perform_search error: {str(e)}")
+            raise
 
+    def get(self, request):
+        try:
+            lat = request.query_params.get('latitude')
+            lng = request.query_params.get('longitude')
+            category = request.query_params.get('category', 'hotels')
+
+            if not (lat and lng):
+                return Response({'error': 'latitude and longitude are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                lat = float(lat)
+                lng = float(lng)
+            except ValueError:
+                return Response({'error': 'Invalid latitude or longitude.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            area_size_param = request.query_params.get('area_size')
+            area_size_meters = int(area_size_param) if area_size_param else 5000
+            grid_size = int(request.query_params.get('grid_size', 3))
+            overlap = float(request.query_params.get('overlap', 0.4))
+
+            response_data = self.perform_search(lat=lat, lng=lng, category=category,
+                                                area_size_meters=area_size_meters,
+                                                grid_size=grid_size, overlap=overlap)
             return Response(response_data)
-            
         except Exception as e:
             print(f"Main search error: {str(e)}")
             import traceback
             traceback.print_exc()
-            return Response(
-                {'error': f'Search failed: {str(e)}'}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({'error': f'Search failed: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ConsolidatedPlacesAPI(GooglePlacesHotelSearchView):
+    """A single API endpoint intended for frontend integration.
+
+    Accepts either `address` (preferred) or `latitude`+`longitude`, plus `category` and optional grid params.
+    Returns JSON with `results` and `metadata` ready for frontend rendering.
+    """
+    def get(self, request):
+        try:
+            address = request.query_params.get('address')
+            lat = request.query_params.get('latitude')
+            lng = request.query_params.get('longitude')
+            category = request.query_params.get('category', 'hotels')
+
+            area_size_param = request.query_params.get('area_size')
+            area_size_meters = int(area_size_param) if area_size_param else 5000
+            grid_size = int(request.query_params.get('grid_size', 3))
+            overlap = float(request.query_params.get('overlap', 0.4))
+
+            # If address is provided, do a quick geocode (use the same Places searchText)
+            if address and not (lat and lng):
+                api_key = os.getenv('GOOGLE_PLACES_API_KEY')
+                if not api_key:
+                    return Response({'error': 'Google API key is not configured'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+                geocode_url = 'https://places.googleapis.com/v1/places:searchText'
+                headers = {
+                    'Content-Type': 'application/json',
+                    'X-Goog-Api-Key': api_key,
+                    'X-Goog-FieldMask': 'places.location,places.formattedAddress'
+                }
+                payload = {'textQuery': address}
+                data = self._make_request_with_retry(url=geocode_url, headers=headers, json=payload, method='post')
+                if not data or 'places' not in data or not data['places']:
+                    return Response({'error': 'Address geocoding failed or no location found'}, status=status.HTTP_404_NOT_FOUND)
+                place = data['places'][0]
+                location = place.get('location', {})
+                lat = location.get('latitude')
+                lng = location.get('longitude')
+                if lat is None or lng is None:
+                    return Response({'error': 'Failed to obtain coordinates from address'}, status=status.HTTP_404_NOT_FOUND)
+
+            if not (lat and lng):
+                return Response({'error': 'Provide either address or latitude and longitude.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                lat = float(lat)
+                lng = float(lng)
+            except ValueError:
+                return Response({'error': 'Invalid latitude or longitude values.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            response_data = self.perform_search(lat=lat, lng=lng, category=category,
+                                                area_size_meters=area_size_meters, grid_size=grid_size, overlap=overlap)
+            return Response(response_data)
+        except Exception as e:
+            print(f"Consolidated API error: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Response({'error': f'Consolidated search failed: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class GoogleGeocodingView(APIView):
     def get(self, request):
