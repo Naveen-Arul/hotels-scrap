@@ -1,0 +1,141 @@
+https://hotels-scrap-kisanmitra.onrender.com/api/search/?address=MG%20Road%20Bengaluru&category=restaurants
+
+
+Consolidated Places API
+
+Overview
+
+This repository exposes a single consolidated endpoint intended for frontend integration. The endpoint performs server-side Google Places searches using a grid-based search strategy and returns aggregated results in JSON.
+
+Endpoint
+
+GET /api/search/
+
+Description
+
+- Accepts either a free-form `address` (preferred) or a pair of `latitude` and `longitude` coordinates as the search center.
+- Accepts a single `category` keyword which the backend uses exactly as provided (no automatic synonym expansion).
+- Optional grid and area parameters allow fine control over search coverage (defaults chosen for a good balance of coverage and cost).
+
+Query parameters
+
+- address (string) — preferred. Freely typed address to geocode and use as the search origin.
+- latitude (float) and longitude (float) — alternative to `address`. Both must be provided together.
+- category (string) — required. Single keyword used exactly as provided (examples: `restaurants`, `hotels`, `juice`, `fruit`).
+- area_size (int, optional) — total search area in meters (default: 5000).
+- grid_size (int, optional) — integer N to run an N x N grid (default: 3 meaning 3x3).
+- overlap (float, optional) — fraction of overlap between adjacent grid cells (default: 0.4).
+- grid behavior notes: the backend subdivides the requested area into grid cells, runs a Places text search centered on each cell, and aggregates unique place results.
+
+Response shape
+
+The endpoint responds with JSON containing two top-level keys:
+
+- results: an array of place objects. Each place typically contains:
+  - place_id
+  - name
+  - formatted_address
+  - location: { latitude, longitude }
+  - rating
+  - user_ratings_total
+  - types (array)
+  - phone_number
+  - website
+  - price_level (string or null)
+  - business_status
+  - opening_hours (array of weekday descriptions)
+  - current_status (string like "Open" / "Hours not available")
+  - is_open (boolean)
+  - primary_type
+  - short_address
+  - has_phone (boolean)
+
+- metadata: information about the search and parameters used, for example:
+  - total_results: integer (unique places found)
+  - search_parameters: { latitude, longitude, area_size_km, cell_radius_m, keywords, grid_size, overlap }
+  - timestamp: ISO 8601 timestamp when the search completed
+
+Example request (address + category)
+
+https://hotels-scrap-kisanmitra.onrender.com/api/search/?address=MG%20Road%20Bengaluru&category=restaurants
+
+Example (truncated) response
+
+{
+  "results": [ ... ],
+  "metadata": {
+    "total_results": 85,
+    "search_parameters": {
+      "latitude": 12.9746905,
+      "longitude": 77.6094613,
+      "area_size_km": 5.0,
+      "cell_radius_m": 1000,
+      "keywords": ["restaurants"],
+      "grid_size": 3,
+      "overlap": 0.4
+    },
+    "timestamp": "2025-09-22T16:55:30.630856"
+  }
+}
+
+API key (where to place it)
+
+The service performs Google Places calls from the server and reads the Google API key from an environment variable named `GOOGLE_PLACES_API_KEY`.
+
+Recommended (production-safe) setup:
+
+- Render: set an Environment Variable in your service settings:
+  - Key: GOOGLE_PLACES_API_KEY
+  - Value: <YOUR_GOOGLE_PLACES_API_KEY> (example format: starts with "AIza")
+
+- Local PowerShell (temporary session):
+
+  $env:GOOGLE_PLACES_API_KEY = 'AIzaSyD_EXAMPLE_1234567890abcdef'
+  # Then run the Django development server in the same session:
+  python manage.py runserver
+
+- Windows persistent (set for current user):
+
+  setx GOOGLE_PLACES_API_KEY "AIzaSyD_EXAMPLE_1234567890abcdef"
+  # Restart shell to pick up the value.
+
+- .env file (only if you use python-dotenv/django-environ):
+
+  Create a file named .env next to manage.py and add:
+  GOOGLE_PLACES_API_KEY=AIzaSyD_EXAMPLE_1234567890abcdef
+
+  Important: Do NOT commit the .env file to source control.
+
+Quick testing (NOT recommended for production)
+
+- You can append an `api_key` query parameter for quick tests, but this is insecure and not enabled by default. Example:
+
+  https://hotels-scrap-kisanmitra.onrender.com/api/search/?address=MG%20Road%20Bengaluru&category=restaurants&api_key=AIzaSyD_EXAMPLE_1234567890abcdef
+
+- To enable query param key acceptance, a small server change is required (example snippet):
+
+  api_key = request.query_params.get('api_key') or os.getenv('GOOGLE_PLACES_API_KEY')
+
+  (Only use this for temporary testing and remove it afterwards.)
+
+Example calls
+
+- cURL (server reads env var):
+
+  curl "https://hotels-scrap-kisanmitra.onrender.com/api/search/?address=MG%20Road%20Bengaluru&category=restaurants"
+
+- Browser: paste the example URL into the address bar.
+
+Fake API key example format
+
+- Google API keys often start with `AIza` and are followed by a long alphanumeric string. Example (fake):
+
+  AIzaSyD_EXAMPLE_1234567890abcdef
+
+Security notes
+
+- Keep your API key secret. Do not embed it in frontend code or public repositories.
+- Use API key restrictions in the Google Cloud Console (HTTP referrers, IP addresses) to reduce risk if leaked.
+- Prefer server-side calls so the frontend never sees the Google API key.
+
+If you want this exact content placed into a downloadable PDF, I can (option A) produce the `.txt` file (already created) and provide steps to convert it to PDF locally, or (option B) generate a simple script that uses wkhtmltopdf or pandoc to convert the text/markdown to PDF. Let me know which you prefer.

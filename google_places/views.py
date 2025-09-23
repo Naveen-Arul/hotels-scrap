@@ -89,6 +89,36 @@ class GooglePlacesHotelSearchView(APIView):
             'has_phone': bool(phone_number)
         }
 
+    def _sanitize_category(self, category: str) -> str:
+        """Clean incoming category strings and provide a safe default."""
+        if not category:
+            return 'hotels'
+        # Trim whitespace and stray punctuation often seen in malformed URLs
+        cat = str(category).strip()
+        # remove trailing/leading semicolons or equals accidentally included
+        cat = cat.strip(';=').strip()
+        return cat or 'hotels'
+
+    def _get_category_from_request(self, request) -> str:
+        """Robustly extract category from query params. Handles malformed keys like 'category;'."""
+        # Preferred direct lookup
+        category = request.query_params.get('category')
+        if category:
+            return self._sanitize_category(category)
+
+        # Fallback: try to find any key that contains 'category' (covers 'category;' or similar typos)
+        for key in request.query_params.keys():
+            if not key:
+                continue
+            k = key.strip()
+            if 'category' == k or k.startswith('category') or 'category' in k:
+                val = request.query_params.get(key)
+                if val:
+                    return self._sanitize_category(val)
+
+        # Final fallback default
+        return 'hotels'
+
     def perform_search(self, lat: float, lng: float, category: str = 'hotels', area_size_meters: int = 5000,
                        grid_size: int = 3, overlap: float = 0.4, max_results_per_cell: int = 20) -> Dict:
         """Perform the grid search and return aggregated results dict (same shape as get response).
@@ -208,7 +238,7 @@ class GooglePlacesHotelSearchView(APIView):
         try:
             lat = request.query_params.get('latitude')
             lng = request.query_params.get('longitude')
-            category = request.query_params.get('category', 'hotels')
+            category = self._get_category_from_request(request)
 
             if not (lat and lng):
                 return Response({'error': 'latitude and longitude are required.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -246,7 +276,7 @@ class ConsolidatedPlacesAPI(GooglePlacesHotelSearchView):
             address = request.query_params.get('address')
             lat = request.query_params.get('latitude')
             lng = request.query_params.get('longitude')
-            category = request.query_params.get('category', 'hotels')
+            category = self._get_category_from_request(request)
 
             area_size_param = request.query_params.get('area_size')
             area_size_meters = int(area_size_param) if area_size_param else 5000
