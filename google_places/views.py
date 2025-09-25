@@ -317,12 +317,14 @@ class GooglePlacesHotelSearchView(APIView):
                                 'maxResultCount': max_results_per_cell
                             }
 
+
                             data = self._make_request_with_retry(
                                 url=url,
                                 headers=search_headers,
                                 json=payload,
                                 method='post'
                             )
+                            print('DEBUG: Raw Google Places API response:', data)
 
                             if not data or 'places' not in data:
                                 cache.set(cache_key, [], timeout=3600)
