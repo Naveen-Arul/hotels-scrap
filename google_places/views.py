@@ -157,38 +157,34 @@ from typing import Dict, List
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from django.core.cache import cache
-
 class GooglePlacesHotelSearchView(APIView):
     def _make_request_with_retry(self, url: str, headers: Dict, json: Dict = None, method: str = 'get', max_retries: int = 1) -> Dict:
         """Make a request with minimal retry for faster response on Render"""
         for attempt in range(max_retries):
             try:
                 if method.lower() == 'post':
-                    response = requests.post(url, headers=headers, json=json, timeout=8)  # Reduced from 15s
+                    response = requests.post(url, headers=headers, json=json, timeout=8)
                 else:
                     response = requests.get(url, headers=headers, timeout=8)
-
-                # For 400 errors, return empty dict immediately as these won't succeed with retry
                 if response.status_code == 400:
                     error_msg = f"Bad request for {url}"
                     if hasattr(response, 'text'):
                         error_msg += f"\nResponse: {response.text}"
                     print(error_msg)
                     return {}
-
                 response.raise_for_status()
                 return response.json()
             except requests.RequestException as e:
-                if attempt == max_retries - 1:  # Last attempt failed
+                if attempt == max_retries - 1:
                     error_msg = f"Request failed after {max_retries} attempts for {url}: {str(e)}"
                     print(error_msg)
                     return {}
-                # Only retry on network errors or 5xx errors
                 if not hasattr(e, 'response') or (500 <= e.response.status_code < 600):
-                    continue  # Removed sleep delay for speed
+                    continue
                 return {}
         return {}
+
+    def format_place_data(self, place, details):
         full_address = place.get('formattedAddress', '')
         phone_number = details.get('nationalPhoneNumber') if details else None
         weekday_texts = details.get('currentOpeningHours', {}).get('weekdayDescriptions') if details else None
@@ -221,20 +217,15 @@ class GooglePlacesHotelSearchView(APIView):
         """Clean incoming category strings and provide a safe default."""
         if not category:
             return 'hotels'
-        # Trim whitespace and stray punctuation often seen in malformed URLs
         cat = str(category).strip()
-        # remove trailing/leading semicolons or equals accidentally included
         cat = cat.strip(';=').strip()
         return cat or 'hotels'
 
     def _get_category_from_request(self, request) -> str:
         """Robustly extract category from query params. Handles malformed keys like 'category;'."""
-        # Preferred direct lookup
         category = request.query_params.get('category')
         if category:
             return self._sanitize_category(category)
-
-        # Fallback: try to find any key that contains 'category' (covers 'category;' or similar typos)
         for key in request.query_params.keys():
             if not key:
                 continue
@@ -243,32 +234,18 @@ class GooglePlacesHotelSearchView(APIView):
                 val = request.query_params.get(key)
                 if val:
                     return self._sanitize_category(val)
-
-        # Final fallback default
         return 'hotels'
 
     def perform_search(self, lat: float, lng: float, category: str = 'hotels', area_size_meters: int = 5000,
                        grid_size: int = 3, overlap: float = 0.4, max_results_per_cell: int = 20) -> Dict:
-        """Perform the grid search and return aggregated results dict (same shape as get response).
-
-        This method is separated so other endpoints can call the same logic (e.g. consolidated API).
-        """
         try:
-            # Use the provided category only — do not expand into hardcoded synonyms.
-            # This makes the API behavior deterministic: the endpoint's `category` value
-            # will be passed directly as the single search keyword to Google Places.
             keywords = [category]
-
-            # Convert meters to degrees for calculation
-            earth_radius = 6378137  # meters
+            earth_radius = 6378137
             step_meters = area_size_meters * (1 - overlap) * 2 / grid_size
-
             def offset_lat(d):
                 return (d / earth_radius) * (180 / math.pi)
-
             def offset_lng(d, lat0):
                 return (d / (earth_radius * math.cos(math.pi * lat0 / 180))) * (180 / math.pi)
-
             places = {}
             url = 'https://places.googleapis.com/v1/places:searchText'
             api_key = os.getenv('GOOGLE_PLACES_API_KEY')
@@ -280,7 +257,6 @@ class GooglePlacesHotelSearchView(APIView):
                                   'places.websiteUri,places.priceLevel,places.businessStatus,places.shortFormattedAddress,'
                                   'places.currentOpeningHours'
             }
-
             for keyword in keywords:
                 for i in range(grid_size):
                     for j in range(grid_size):
@@ -292,17 +268,13 @@ class GooglePlacesHotelSearchView(APIView):
                                     if place['place_id'] not in places:
                                         places[place['place_id']] = place
                                 continue
-
                             offset_x = step_meters * (i - grid_size // 2)
                             offset_y = step_meters * (j - grid_size // 2)
-
                             lat_offset = offset_lat(offset_y)
                             lng_offset = offset_lng(offset_x, lat)
-
                             search_lat = lat + lat_offset
                             search_lng = lng + lng_offset
                             search_radius = int(step_meters * 0.7)
-
                             payload = {
                                 'textQuery': keyword,
                                 'locationBias': {
@@ -316,8 +288,6 @@ class GooglePlacesHotelSearchView(APIView):
                                 },
                                 'maxResultCount': max_results_per_cell
                             }
-
-
                             data = self._make_request_with_retry(
                                 url=url,
                                 headers=search_headers,
@@ -325,11 +295,9 @@ class GooglePlacesHotelSearchView(APIView):
                                 method='post'
                             )
                             print('DEBUG: Raw Google Places API response:', data)
-
                             if not data or 'places' not in data:
                                 cache.set(cache_key, [], timeout=3600)
                                 continue
-
                             cell_places = []
                             for place in data['places']:
                                 place_id = place.get('id')
@@ -337,12 +305,10 @@ class GooglePlacesHotelSearchView(APIView):
                                     formatted_place = self.format_place_data(place, None)
                                     places[place_id] = formatted_place
                                     cell_places.append(formatted_place)
-
                             cache.set(cache_key, cell_places, timeout=3600)
                         except Exception as e:
                             print(f"Error in grid cell {i},{j} for keyword {keyword}: {str(e)}")
                             continue
-
             response_data = {
                 'results': list(places.values()),
                 'metadata': {
@@ -363,11 +329,6 @@ class GooglePlacesHotelSearchView(APIView):
         except Exception as e:
             print(f"perform_search error: {str(e)}")
             raise
-
-    def get(self, request):
-        try:
-            lat = request.query_params.get('latitude')
-            lng = request.query_params.get('longitude')
             category = self._get_category_from_request(request)
 
             if not (lat and lng):
