@@ -18,7 +18,7 @@ class GooglePlacesHotelSearchView(APIView):
                     response = requests.post(url, headers=headers, json=json, timeout=8)  # Reduced from 15s
                 else:
                     response = requests.get(url, headers=headers, timeout=8)
-                
+
                 # For 400 errors, return empty dict immediately as these won't succeed with retry
                 if response.status_code == 400:
                     error_msg = f"Bad request for {url}"
@@ -26,7 +26,7 @@ class GooglePlacesHotelSearchView(APIView):
                         error_msg += f"\nResponse: {response.text}"
                     print(error_msg)
                     return {}
-                
+
                 response.raise_for_status()
                 return response.json()
             except requests.RequestException as e:
@@ -39,33 +39,132 @@ class GooglePlacesHotelSearchView(APIView):
                     continue  # Removed sleep delay for speed
                 return {}
         return {}
+    # ...existing code...
 
-    def format_place_data(self, place: Dict, details: Dict = None) -> Dict:
-        """Format place data with all available details"""
-        details = details or {}
-        # Extract address
-        full_address = place.get('formattedAddress', 'Address not available')
-        
-        # Get phone number and validate it
-        phone_number = place.get('nationalPhoneNumber') or details.get('nationalPhoneNumber')
-        if not phone_number:
-            phone_number = place.get('internationalPhoneNumber') or details.get('internationalPhoneNumber')
+# ...existing code...
 
-        # Process opening hours - simplified for better performance
-        opening_hours = place.get('currentOpeningHours') or details.get('currentOpeningHours', {})
-        is_open = False
-        current_opening_hours = "Hours not available"
-        weekday_texts = []
-        
-        if opening_hours:
-            weekday_texts = opening_hours.get('weekdayDescriptions', [])
-            # Simplified open status check
-            if opening_hours.get('openNow'):
-                is_open = True
-                current_opening_hours = "Open"
-            elif weekday_texts:
-                current_opening_hours = "Check hours"
+# Add new endpoints after all base classes
+class AddressSearchAPI(GooglePlacesHotelSearchView):
+    """Endpoint for searching by address and category."""
+    def get(self, request):
+        address = request.query_params.get('address')
+        category = self._get_category_from_request(request)
+        if not address:
+            return Response({'error': 'Address is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        api_key = os.getenv('GOOGLE_PLACES_API_KEY')
+        if not api_key:
+            return Response({'error': 'Google API key is not configured'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        geocode_url = 'https://places.googleapis.com/v1/places:searchText'
+        headers = {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': api_key,
+            'X-Goog-FieldMask': 'places.location,places.formattedAddress'
+        }
+        payload = {'textQuery': address}
+        data = self._make_request_with_retry(url=geocode_url, headers=headers, json=payload, method='post')
+        if not data or 'places' not in data or not data['places']:
+            return Response({'error': 'Address geocoding failed or no location found'}, status=status.HTTP_404_NOT_FOUND)
+        place = data['places'][0]
+        location = place.get('location', {})
+        lat = location.get('latitude')
+        lng = location.get('longitude')
+        if lat is None or lng is None:
+            return Response({'error': 'Failed to obtain coordinates from address'}, status=status.HTTP_404_NOT_FOUND)
+        area_size_param = request.query_params.get('area_size')
+        area_size_meters = int(area_size_param) if area_size_param else 5000
+        grid_size = int(request.query_params.get('grid_size', 3))
+        overlap = float(request.query_params.get('overlap', 0.4))
+        response_data = self.perform_search(lat=lat, lng=lng, category=category,
+                                           area_size_meters=area_size_meters, grid_size=grid_size, overlap=overlap)
+        return Response(response_data)
 
+class LocationSearchAPI(GooglePlacesHotelSearchView):
+    """Endpoint for searching by latitude, longitude, and category."""
+    def get(self, request):
+        lat = request.query_params.get('latitude')
+        lng = request.query_params.get('longitude')
+        category = self._get_category_from_request(request)
+        if not (lat and lng):
+            return Response({'error': 'Latitude and longitude are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            lat = float(lat)
+            lng = float(lng)
+        except ValueError:
+            return Response({'error': 'Invalid latitude or longitude.'}, status=status.HTTP_400_BAD_REQUEST)
+        area_size_param = request.query_params.get('area_size')
+        area_size_meters = int(area_size_param) if area_size_param else 5000
+        grid_size = int(request.query_params.get('grid_size', 3))
+        overlap = float(request.query_params.get('overlap', 0.4))
+        response_data = self.perform_search(lat=lat, lng=lng, category=category,
+                                           area_size_meters=area_size_meters, grid_size=grid_size, overlap=overlap)
+        return Response(response_data)
+
+class LocationPermissionAPI(GooglePlacesHotelSearchView):
+    """Endpoint for frontend location permission flow: accepts lat/lng and category after permission granted."""
+    def get(self, request):
+        lat = request.query_params.get('latitude')
+        lng = request.query_params.get('longitude')
+        category = self._get_category_from_request(request)
+        if not (lat and lng):
+            return Response({'error': 'Latitude and longitude are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            lat = float(lat)
+            lng = float(lng)
+        except ValueError:
+            return Response({'error': 'Invalid latitude or longitude.'}, status=status.HTTP_400_BAD_REQUEST)
+        area_size_param = request.query_params.get('area_size')
+        area_size_meters = int(area_size_param) if area_size_param else 5000
+        grid_size = int(request.query_params.get('grid_size', 3))
+        overlap = float(request.query_params.get('overlap', 0.4))
+        response_data = self.perform_search(lat=lat, lng=lng, category=category,
+                                           area_size_meters=area_size_meters, grid_size=grid_size, overlap=overlap)
+        return Response(response_data)
+import os
+import requests
+import math
+import time
+from datetime import datetime
+from typing import Dict, List
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.core.cache import cache
+
+class GooglePlacesHotelSearchView(APIView):
+    def _make_request_with_retry(self, url: str, headers: Dict, json: Dict = None, method: str = 'get', max_retries: int = 1) -> Dict:
+        """Make a request with minimal retry for faster response on Render"""
+        for attempt in range(max_retries):
+            try:
+                if method.lower() == 'post':
+                    response = requests.post(url, headers=headers, json=json, timeout=8)  # Reduced from 15s
+                else:
+                    response = requests.get(url, headers=headers, timeout=8)
+
+                # For 400 errors, return empty dict immediately as these won't succeed with retry
+                if response.status_code == 400:
+                    error_msg = f"Bad request for {url}"
+                    if hasattr(response, 'text'):
+                        error_msg += f"\nResponse: {response.text}"
+                    print(error_msg)
+                    return {}
+
+                response.raise_for_status()
+                return response.json()
+            except requests.RequestException as e:
+                if attempt == max_retries - 1:  # Last attempt failed
+                    error_msg = f"Request failed after {max_retries} attempts for {url}: {str(e)}"
+                    print(error_msg)
+                    return {}
+                # Only retry on network errors or 5xx errors
+                if not hasattr(e, 'response') or (500 <= e.response.status_code < 600):
+                    continue  # Removed sleep delay for speed
+                return {}
+        return {}
+        full_address = place.get('formattedAddress', '')
+        phone_number = details.get('nationalPhoneNumber') if details else None
+        weekday_texts = details.get('currentOpeningHours', {}).get('weekdayDescriptions') if details else None
+        current_opening_hours = details.get('currentOpeningHours', {}) if details else None
+        is_open = current_opening_hours.get('openNow') if current_opening_hours else None
         return {
             'place_id': place['id'],
             'name': place.get('displayName', {}).get('text', 'Unnamed Place'),
@@ -78,7 +177,7 @@ class GooglePlacesHotelSearchView(APIView):
             'user_ratings_total': place.get('userRatingCount', 0),
             'types': place.get('types', []),
             'phone_number': phone_number or "Not available",
-            'website': details.get('websiteUri') or place.get('websiteUri') or "Not available",
+            'website': details.get('websiteUri') if details else place.get('websiteUri') or "Not available",
             'price_level': place.get('priceLevel'),
             'business_status': place.get('businessStatus', 'OPERATIONAL'),
             'opening_hours': weekday_texts,
@@ -283,7 +382,7 @@ class ConsolidatedPlacesAPI(GooglePlacesHotelSearchView):
             grid_size = int(request.query_params.get('grid_size', 3))
             overlap = float(request.query_params.get('overlap', 0.4))
 
-            # If address is provided, do a quick geocode (use the same Places searchText)
+            # Mode 1: address provided, use geocoding
             if address and not (lat and lng):
                 api_key = os.getenv('GOOGLE_PLACES_API_KEY')
                 if not api_key:
@@ -306,14 +405,17 @@ class ConsolidatedPlacesAPI(GooglePlacesHotelSearchView):
                 if lat is None or lng is None:
                     return Response({'error': 'Failed to obtain coordinates from address'}, status=status.HTTP_404_NOT_FOUND)
 
-            if not (lat and lng):
-                return Response({'error': 'Provide either address or latitude and longitude.'}, status=status.HTTP_400_BAD_REQUEST)
+            # Mode 2: latitude and longitude provided, use directly
+            elif lat and lng:
+                try:
+                    lat = float(lat)
+                    lng = float(lng)
+                except ValueError:
+                    return Response({'error': 'Invalid latitude or longitude values.'}, status=status.HTTP_400_BAD_REQUEST)
 
-            try:
-                lat = float(lat)
-                lng = float(lng)
-            except ValueError:
-                return Response({'error': 'Invalid latitude or longitude values.'}, status=status.HTTP_400_BAD_REQUEST)
+            # Neither address nor lat/lng provided
+            else:
+                return Response({'error': 'Provide either address or latitude and longitude.'}, status=status.HTTP_400_BAD_REQUEST)
 
             response_data = self.perform_search(lat=lat, lng=lng, category=category,
                                                 area_size_meters=area_size_meters, grid_size=grid_size, overlap=overlap)
