@@ -39,35 +39,35 @@ class GooglePlacesHotelSearchView(APIView):
                     continue  # Removed sleep delay for speed
                 return {}
         return {}
-    
-        def format_place_data(self, place, details):
-            full_address = place.get('formattedAddress', '')
-            phone_number = details.get('nationalPhoneNumber') if details else None
-            weekday_texts = details.get('currentOpeningHours', {}).get('weekdayDescriptions') if details else None
-            current_opening_hours = details.get('currentOpeningHours', {}) if details else None
-            is_open = current_opening_hours.get('openNow') if current_opening_hours else None
-            return {
-                'place_id': place['id'],
-                'name': place.get('displayName', {}).get('text', 'Unnamed Place'),
-                'formatted_address': full_address,
-                'location': {
-                    'latitude': place.get('location', {}).get('latitude'),
-                    'longitude': place.get('location', {}).get('longitude')
-                },
-                'rating': place.get('rating'),
-                'user_ratings_total': place.get('userRatingCount', 0),
-                'types': place.get('types', []),
-                'phone_number': phone_number or "Not available",
-                'website': details.get('websiteUri') if details else place.get('websiteUri') or "Not available",
-                'price_level': place.get('priceLevel'),
-                'business_status': place.get('businessStatus', 'OPERATIONAL'),
-                'opening_hours': weekday_texts,
-                'current_status': current_opening_hours,
-                'is_open': is_open,
-                'primary_type': place.get('types', ['PLACE'])[0].replace('_', ' ').title() if place.get('types') else 'Place',
-                'short_address': place.get('shortFormattedAddress', full_address).split(',')[0],
-                'has_phone': bool(phone_number)
-            }
+
+    def format_place_data(self, place, details):
+        full_address = place.get('formattedAddress', '')
+        phone_number = details.get('nationalPhoneNumber') if details else None
+        weekday_texts = details.get('currentOpeningHours', {}).get('weekdayDescriptions') if details else None
+        current_opening_hours = details.get('currentOpeningHours', {}) if details else None
+        is_open = current_opening_hours.get('openNow') if current_opening_hours else None
+        return {
+            'place_id': place['id'],
+            'name': place.get('displayName', {}).get('text', 'Unnamed Place'),
+            'formatted_address': full_address,
+            'location': {
+                'latitude': place.get('location', {}).get('latitude'),
+                'longitude': place.get('location', {}).get('longitude')
+            },
+            'rating': place.get('rating'),
+            'user_ratings_total': place.get('userRatingCount', 0),
+            'types': place.get('types', []),
+            'phone_number': phone_number or "Not available",
+            'website': details.get('websiteUri') if details else place.get('websiteUri') or "Not available",
+            'price_level': place.get('priceLevel'),
+            'business_status': place.get('businessStatus', 'OPERATIONAL'),
+            'opening_hours': weekday_texts,
+            'current_status': current_opening_hours,
+            'is_open': is_open,
+            'primary_type': place.get('types', ['PLACE'])[0].replace('_', ' ').title() if place.get('types') else 'Place',
+            'short_address': place.get('shortFormattedAddress', full_address).split(',')[0],
+            'has_phone': bool(phone_number)
+        }
     # ...existing code...
 
 # ...existing code...
