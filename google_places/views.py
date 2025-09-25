@@ -10,6 +10,25 @@ from rest_framework import status
 from django.core.cache import cache
 
 class GooglePlacesHotelSearchView(APIView):
+    def get(self, request):
+        """Support GET requests for /search/ endpoint (lat/lng required)."""
+        lat = request.query_params.get('latitude')
+        lng = request.query_params.get('longitude')
+        category = self._get_category_from_request(request)
+        if not (lat and lng):
+            return Response({'error': 'latitude and longitude are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            lat = float(lat)
+            lng = float(lng)
+        except ValueError:
+            return Response({'error': 'Invalid latitude or longitude.'}, status=status.HTTP_400_BAD_REQUEST)
+        area_size_param = request.query_params.get('area_size')
+        area_size_meters = int(area_size_param) if area_size_param else 5000
+        grid_size = int(request.query_params.get('grid_size', 3))
+        overlap = float(request.query_params.get('overlap', 0.4))
+        response_data = self.perform_search(lat=lat, lng=lng, category=category,
+                                           area_size_meters=area_size_meters, grid_size=grid_size, overlap=overlap)
+        return Response(response_data)
     def _make_request_with_retry(self, url: str, headers: Dict, json: Dict = None, method: str = 'get', max_retries: int = 1) -> Dict:
         """Make a request with minimal retry for faster response on Render"""
         for attempt in range(max_retries):
