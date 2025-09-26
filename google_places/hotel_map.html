@@ -307,6 +307,7 @@
     </div>
     <h2>Place Search Map</h2>
     <div id="searchContainer">
+        <button type="button" id="useMyLocationBtn" style="background-color:#007bff; color:white; margin-right:10px;">Use My Location</button>
         <label>Location: <input type="text" id="locationInput" placeholder="Enter city, address, or area name" required></label>
         <label>Category:
             <select id="categoryInput" required>
@@ -1095,6 +1096,33 @@
         
         // Load saved values when page loads
         window.addEventListener('load', loadSavedFormValues);
+
+        // "Use My Location" button logic
+        document.getElementById('useMyLocationBtn').onclick = async function() {
+            const category = document.getElementById('categoryInput').value || 'hotels';
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(async function(position) {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    // Initialize map with user's location
+                    initMap(lat, lng, 13);
+                    // Prepare search parameters
+                    const searchParams = {
+                        latitude: lat,
+                        longitude: lng,
+                        area_size: 5000,
+                        grid_size: 3,
+                        overlap: 0.4
+                    };
+                    await fetchAndDisplayHotels(searchParams);
+                    document.getElementById('geocodeStatus').textContent = `Showing all results near your location.`;
+                }, function(error) {
+                    alert('Unable to get location: ' + error.message);
+                });
+            } else {
+                alert('Geolocation is not supported by this browser.');
+            }
+        };
 
         // Modal close button
         document.querySelector('.close-modal').addEventListener('click', function() {
