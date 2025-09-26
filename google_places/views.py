@@ -1,3 +1,4 @@
+
 import os
 import requests
 import math
@@ -7,6 +8,44 @@ from django.core.cache import cache
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import json
+
+# ...existing code...
+
+@csrf_exempt
+def location_api(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        latitude = data.get('latitude')
+        longitude = data.get('longitude')
+        category = data.get('category')
+        # Replace with your actual logic
+        return JsonResponse({'status': 'success', 'data': f'Places for lat={latitude}, lng={longitude}, category={category}'})
+    return JsonResponse({'error': 'Invalid method'}, status=405)
+
+@csrf_exempt
+def latlng_api(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        latitude = data.get('latitude')
+        longitude = data.get('longitude')
+        category = data.get('category')
+        # Replace with your actual logic
+        return JsonResponse({'status': 'success', 'data': f'Places for lat={latitude}, lng={longitude}, category={category}'})
+    return JsonResponse({'error': 'Invalid method'}, status=405)
+
+@csrf_exempt
+def address_api(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        address = data.get('address')
+        category = data.get('category')
+        # Replace with your actual logic
+        return JsonResponse({'status': 'success', 'data': f'Places for address={address}, category={category}'})
+    return JsonResponse({'error': 'Invalid method'}, status=405)
+
 
 class GooglePlacesHotelSearchView(APIView):
     def get(self, request):
